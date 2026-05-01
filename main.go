@@ -1,9 +1,12 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
+	"strings"
 )
 
 func isHealth(h http.ResponseWriter, r *http.Request) {
@@ -11,6 +14,22 @@ func isHealth(h http.ResponseWriter, r *http.Request) {
 	h.Write([]byte("ok"))
 
 }
+
+func run(h http.ResponseWriter, r *http.Request) {
+	path := r.URL.Path
+	value := strings.TrimPrefix(path, "/run/")
+
+	cmd := exec.Command("uploads/" + value)
+	output, err := cmd.Output()
+	if err != nil {
+		fmt.Println("error:", err)
+		return
+	}
+
+	h.WriteHeader(http.StatusOK)
+	h.Write([]byte(output))
+}
+
 func uploadBinary(h http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		h.WriteHeader(http.StatusMethodNotAllowed)
@@ -35,6 +54,8 @@ func uploadBinary(h http.ResponseWriter, r *http.Request) {
 
 	io.Copy(dst, file)
 
+	cmd := exec.Command("chmod", "+x", "uploads/"+header.Filename)
+	cmd.Run()
 	h.WriteHeader(http.StatusOK)
 	h.Write([]byte("binary uploaded: " + header.Filename))
 }
@@ -50,16 +71,9 @@ func main() {
 	// }
 	// fmt.Println(value)
 
-	// cmd := exec.Command(value)
-	// output, err := cmd.Output()
-	// if err != nil {
-	// 	fmt.Println("error:", err)
-	// 	return
-	// }
-	// fmt.Println(string(output))
-
 	http.HandleFunc("/health", isHealth)
 	http.HandleFunc("/uploadBinary", uploadBinary)
+	http.HandleFunc("/run/", run)
 	http.ListenAndServe(":3000", nil)
 	//
 }
