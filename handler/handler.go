@@ -8,12 +8,24 @@ import (
 	"os/exec"
 
 	"github.com/alexanderritik/mini-lambda/runtime"
+	"github.com/google/uuid"
 )
 
-func IsHealth(h http.ResponseWriter, r *http.Request) {
-	h.WriteHeader(http.StatusOK)
-	h.Write([]byte("ok"))
+const maxFileSize = 10 << 20
 
+func jsonResponse(h http.ResponseWriter, status int, v any) {
+	h.Header().Set("Content-Type", "application/json")
+	h.WriteHeader(status)
+	val, err := json.Marshal(v)
+	if err != nil {
+		h.Write([]byte(`{"error":"internal error"}`))
+		return
+	}
+	h.Write(val)
+}
+
+func IsHealth(h http.ResponseWriter, r *http.Request) {
+	jsonResponse(h, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 type RunRequest struct {
@@ -25,63 +37,54 @@ type RunRequest struct {
 func Run(h http.ResponseWriter, r *http.Request) {
 	var req RunRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.WriteHeader(http.StatusBadRequest)
-		h.Write([]byte("invalid request body"))
+		jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
 	}
-
 	if req.Filename == "" || req.Runtime == "" {
-		h.WriteHeader(http.StatusBadRequest)
-		h.Write([]byte("filename and runtime is required"))
+		jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "filename and runtime are required"})
 		return
 	}
 	if req.Timeout == 0 {
 		req.Timeout = 30
 	}
-
 	rt := runtime.GetRuntime(req.Runtime)
 	if rt == nil {
-		h.WriteHeader(http.StatusBadRequest)
-		h.Write([]byte("unsupported runtime"))
+		jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "unsupported runtime"})
 		return
 	}
-
 	output, err := rt.Run(req.Filename, req.Timeout)
 	if err != nil {
-		h.WriteHeader(http.StatusInternalServerError)
-		h.Write([]byte("failed: " + err.Error()))
+		jsonResponse(h, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	h.WriteHeader(http.StatusOK)
-	h.Write([]byte(output))
+	jsonResponse(h, http.StatusOK, map[string]string{"output": string(output)})
 }
 
 func UploadBinary(h http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
-		h.WriteHeader(http.StatusMethodNotAllowed)
-		h.Write([]byte("POST only accepted"))
+		jsonResponse(h, http.StatusMethodNotAllowed, map[string]string{"error": "POST only accepted"})
 		return
 	}
-
 	file, header, err := r.FormFile("binary")
 	if err != nil {
-		h.WriteHeader(http.StatusInternalServerError)
-		h.Write([]byte("failed to read file"))
+		jsonResponse(h, http.StatusInternalServerError, map[string]string{"error": "failed to read file"})
 		return
 	}
-
-	dst, err := os.Create("uploads/" + header.Filename)
+	if header.Size >= maxFileSize {
+		jsonResponse(h, http.StatusRequestEntityTooLarge, map[string]string{"error": "file too large"})
+		return
+	}
+	fileName := uuid.NewString()
+	dst, err := os.Create("uploads/" + fileName)
 	if err != nil {
-		h.WriteHeader(http.StatusInternalServerError)
-		h.Write([]byte("failed to create file"))
+		jsonResponse(h, http.StatusInternalServerError, map[string]string{"error": "failed to create file"})
 		return
 	}
 	defer dst.Close()
-
 	io.Copy(dst, file)
-
-	cmd := exec.Command("chmod", "+x", "uploads/"+header.Filename)
-	cmd.Run()
-	h.WriteHeader(http.StatusOK)
-	h.Write([]byte("binary uploaded: " + header.Filename))
+	exec.Command("chmod", "+x", "uploads/"+fileName).Run()
+	jsonResponse(h, http.StatusOK, map[string]string{
+		"id":      fileName,
+		"message": "binary uploaded successfully",
+	})
 }
