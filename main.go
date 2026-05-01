@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
+	"time"
 )
 
 func isHealth(h http.ResponseWriter, r *http.Request) {
@@ -17,9 +19,10 @@ func isHealth(h http.ResponseWriter, r *http.Request) {
 type RunRequest struct {
 	Filename string `json:"filename"`
 	Runtime  string `json:"runtime"`
+	Timeout  int    `json:"timeout"`
 }
 type Runtime interface {
-	Run(filename string) ([]byte, error)
+	Run(filename string, timeout int) ([]byte, error)
 }
 type GoRuntime struct {
 	Image   string // "alpine"
@@ -31,7 +34,7 @@ type NodeRuntime struct {
 	Command string // "node"
 }
 
-func dockerRun(image, command, filename string) ([]byte, error) {
+func dockerRun(image, command, filename string, timeout int) ([]byte, error) {
 	wd, err := os.Getwd()
 	if err != nil {
 		return nil, err
@@ -41,17 +44,21 @@ func dockerRun(image, command, filename string) ([]byte, error) {
 		args = append(args, command)
 	}
 	args = append(args, "/app/"+filename)
-	out, err := exec.Command("docker", args...).CombinedOutput()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+	defer cancel()
+
+	out, err := exec.CommandContext(ctx, "docker", args...).CombinedOutput()
 	return out, err
 }
 
-func (g GoRuntime) Run(filename string) ([]byte, error) {
-	return dockerRun(g.Image, g.Command, filename)
+func (g GoRuntime) Run(filename string, timeout int) ([]byte, error) {
+	return dockerRun(g.Image, g.Command, filename, timeout)
+}
+func (g NodeRuntime) Run(filename string, timeout int) ([]byte, error) {
+	return dockerRun(g.Image, g.Command, filename, timeout)
 }
 
-func (g NodeRuntime) Run(filename string) ([]byte, error) {
-	return dockerRun(g.Image, g.Command, filename)
-}
 func getRuntime(runtime string) Runtime {
 	switch runtime {
 	case "go":
@@ -71,13 +78,23 @@ func run(h http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.Filename == "" || req.Runtime == "" {
+		h.WriteHeader(http.StatusBadRequest)
+		h.Write([]byte("filename and runtime is required"))
+		return
+	}
+	if req.Timeout == 0 {
+		req.Timeout = 30
+	}
+
 	rt := getRuntime(req.Runtime)
 	if rt == nil {
 		h.WriteHeader(http.StatusBadRequest)
 		h.Write([]byte("unsupported runtime"))
 		return
 	}
-	output, err := rt.Run(req.Filename)
+
+	output, err := rt.Run(req.Filename, req.Timeout)
 	if err != nil {
 		h.WriteHeader(http.StatusInternalServerError)
 		h.Write([]byte("failed: " + err.Error()))
