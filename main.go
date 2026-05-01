@@ -1,12 +1,11 @@
 package main
 
 import (
-	"fmt"
+	"encoding/json"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
-	"strings"
 )
 
 func isHealth(h http.ResponseWriter, r *http.Request) {
@@ -15,17 +14,75 @@ func isHealth(h http.ResponseWriter, r *http.Request) {
 
 }
 
-func run(h http.ResponseWriter, r *http.Request) {
-	path := r.URL.Path
-	value := strings.TrimPrefix(path, "/run/")
+type RunRequest struct {
+	Filename string `json:"filename"`
+	Runtime  string `json:"runtime"`
+}
+type Runtime interface {
+	Run(filename string) ([]byte, error)
+}
+type GoRuntime struct {
+	Image   string // "alpine"
+	Command string // "" (just execute directly)
+}
 
-	cmd := exec.Command("uploads/" + value)
-	output, err := cmd.Output()
+type NodeRuntime struct {
+	Image   string // "node:18"
+	Command string // "node"
+}
+
+func dockerRun(image, command, filename string) ([]byte, error) {
+	wd, err := os.Getwd()
 	if err != nil {
-		fmt.Println("error:", err)
+		return nil, err
+	}
+	args := []string{"run", "--rm", "-v", wd + "/uploads:/app", image}
+	if command != "" {
+		args = append(args, command)
+	}
+	args = append(args, "/app/"+filename)
+	out, err := exec.Command("docker", args...).CombinedOutput()
+	return out, err
+}
+
+func (g GoRuntime) Run(filename string) ([]byte, error) {
+	return dockerRun(g.Image, g.Command, filename)
+}
+
+func (g NodeRuntime) Run(filename string) ([]byte, error) {
+	return dockerRun(g.Image, g.Command, filename)
+}
+func getRuntime(runtime string) Runtime {
+	switch runtime {
+	case "go":
+		return GoRuntime{Image: "alpine", Command: ""}
+	case "node":
+		return NodeRuntime{}
+	default:
+		return nil
+	}
+}
+
+func run(h http.ResponseWriter, r *http.Request) {
+	var req RunRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.WriteHeader(http.StatusBadRequest)
+		h.Write([]byte("invalid request body"))
 		return
 	}
 
+	rt := getRuntime(req.Runtime)
+	if rt == nil {
+		h.WriteHeader(http.StatusBadRequest)
+		h.Write([]byte("unsupported runtime"))
+		return
+	}
+	output, err := rt.Run(req.Filename)
+	if err != nil {
+		h.WriteHeader(http.StatusInternalServerError)
+		h.Write([]byte("failed: " + err.Error()))
+		return
+	}
 	h.WriteHeader(http.StatusOK)
 	h.Write([]byte(output))
 }
@@ -61,15 +118,6 @@ func uploadBinary(h http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-
-	// var value string
-
-	// n, err := fmt.Scan(&value)
-	// if err != nil || n == 0 {
-	// 	fmt.Println("error:", err)
-	// 	return
-	// }
-	// fmt.Println(value)
 
 	http.HandleFunc("/health", isHealth)
 	http.HandleFunc("/uploadBinary", uploadBinary)
