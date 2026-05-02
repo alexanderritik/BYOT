@@ -7,6 +7,7 @@ type Config struct {
 	MinioAccessKey string
 	MinioSecretKey string
 	MinioBucket    string
+	DBUrl          string
 }
 
 func LoadConfig() Config {
@@ -15,5 +16,6 @@ func LoadConfig() Config {
 		MinioAccessKey: os.Getenv("MINIO_ACCESS_KEY"),
 		MinioSecretKey: os.Getenv("MINIO_SECRET_KEY"),
 		MinioBucket:    os.Getenv("MINIO_BUCKET"),
+		DBUrl:          os.Getenv("DB_URL"),
 	}
 }

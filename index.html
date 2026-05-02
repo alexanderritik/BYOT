@@ -1,0 +1,440 @@
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg: #0c0c0c;
+  --bg2: #141414;
+  --bg3: #1a1a1a;
+  --white: #f0ede8;
+  --muted: #666;
+  --muted2: #444;
+  --accent: #00e87a;
+  --accent2: #ff4500;
+  --border: rgba(255,255,255,0.07);
+  --border2: rgba(255,255,255,0.12);
+}
+body { background: var(--bg); color: var(--white); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.6; }
+
+nav {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 1rem 2.5rem; border-bottom: 1px solid var(--border);
+  background: rgba(12,12,12,0.9); position: sticky; top: 0; z-index: 100;
+}
+.logo { font-size: 1.3rem; font-weight: 800; letter-spacing: -0.03em; }
+.logo em { color: var(--accent); font-style: normal; }
+.nav-links { display: flex; gap: 1.75rem; list-style: none; }
+.nav-links a { color: var(--muted); text-decoration: none; font-size: 0.875rem; }
+.nav-links a:hover { color: var(--white); }
+.nav-btn { background: var(--accent); color: #000; padding: 0.45rem 1.1rem; border-radius: 4px; font-size: 0.875rem; font-weight: 600; text-decoration: none; }
+
+.hero {
+  padding: 5rem 2.5rem 4rem; text-align: center;
+  background: radial-gradient(ellipse 70% 50% at 50% 0%, rgba(0,232,122,0.06) 0%, transparent 65%);
+}
+.pill {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  background: rgba(0,232,122,0.08); border: 1px solid rgba(0,232,122,0.18);
+  color: var(--accent); padding: 0.3rem 0.9rem; border-radius: 100px;
+  font-size: 0.75rem; font-family: monospace; letter-spacing: 0.04em; margin-bottom: 2rem;
+}
+.pill-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+h1 { font-size: clamp(2.5rem, 6vw, 4.5rem); font-weight: 800; letter-spacing: -0.04em; line-height: 1.05; margin-bottom: 1.25rem; }
+h1 .ghost { color: transparent; -webkit-text-stroke: 1px rgba(240,237,232,0.25); }
+h1 .green { color: var(--accent); }
+.hero-p { color: var(--muted); font-size: 1.05rem; max-width: 480px; margin: 0 auto 2.5rem; font-weight: 300; line-height: 1.75; }
+.hero-btns { display: flex; gap: 0.875rem; justify-content: center; flex-wrap: wrap; margin-bottom: 3.5rem; }
+.btn-g { background: var(--accent); color: #000; padding: 0.8rem 1.75rem; border-radius: 4px; font-weight: 600; font-size: 0.9rem; text-decoration: none; }
+.btn-o { color: var(--white); padding: 0.8rem 1.5rem; border-radius: 4px; font-size: 0.8rem; text-decoration: none; border: 1px solid var(--border2); font-family: monospace; }
+
+.term {
+  max-width: 680px; margin: 0 auto;
+  background: var(--bg2); border: 1px solid var(--border2); border-radius: 8px; overflow: hidden; text-align: left;
+}
+.term-bar { display: flex; align-items: center; gap: 6px; padding: 0.7rem 1rem; background: var(--bg3); border-bottom: 1px solid var(--border); }
+.td { width: 11px; height: 11px; border-radius: 50%; }
+.td1 { background: #ff5f57; } .td2 { background: #ffbd2e; } .td3 { background: #28c840; }
+.term-title { flex: 1; text-align: center; font-size: 0.7rem; color: var(--muted); font-family: monospace; }
+.term-body { padding: 1.25rem 1.5rem; font-family: 'Courier New', monospace; font-size: 0.8rem; line-height: 2.1; }
+.tc { color: var(--muted2); }
+.tp { color: var(--muted); }
+.tp em { color: var(--accent); font-style: normal; }
+.to { color: rgba(240,237,232,0.55); }
+.ts { color: var(--accent); }
+.te { color: var(--accent2); }
+
+.metrics-bar { display: grid; grid-template-columns: repeat(4,1fr); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); background: rgba(0,232,122,0.02); }
+.met { text-align: center; padding: 2.5rem 1rem; border-right: 1px solid var(--border); }
+.met:last-child { border-right: none; }
+.met-n { font-size: 2.25rem; font-weight: 800; color: var(--accent); letter-spacing: -0.04em; }
+.met-l { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
+
+.sec { padding: 5rem 2.5rem; max-width: 1080px; margin: 0 auto; }
+.sec-label { font-family: monospace; font-size: 0.68rem; letter-spacing: 0.15em; color: var(--accent); text-transform: uppercase; margin-bottom: 0.75rem; }
+.sec-h { font-size: clamp(1.75rem, 3.5vw, 2.5rem); font-weight: 800; letter-spacing: -0.035em; line-height: 1.15; margin-bottom: 0.75rem; }
+.sec-p { color: var(--muted); font-size: 0.95rem; max-width: 460px; line-height: 1.75; font-weight: 300; }
+hr.div { border: none; border-top: 1px solid var(--border); margin: 0 2.5rem; }
+
+.feat-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-top: 3rem; }
+.feat { background: var(--bg); padding: 1.75rem; }
+.feat:hover { background: var(--bg2); }
+.feat-icon { width: 32px; height: 32px; border-radius: 6px; margin-bottom: 1rem; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+.fi-g { background: rgba(0,232,122,0.1); color: var(--accent); }
+.fi-o { background: rgba(255,69,0,0.1); color: var(--accent2); }
+.fi-b { background: rgba(100,180,255,0.1); color: #64b4ff; }
+.feat-t { font-weight: 700; font-size: 0.9375rem; margin-bottom: 0.4rem; letter-spacing: -0.02em; }
+.feat-d { font-size: 0.84rem; color: var(--muted); line-height: 1.65; font-weight: 300; }
+
+.steps-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 1.5rem; margin-top: 3.5rem; position: relative; }
+.steps-row::before { content: ''; position: absolute; top: 1.4rem; left: 12%; right: 12%; height: 1px; background: linear-gradient(90deg, transparent, rgba(0,232,122,0.25), transparent); }
+.step { text-align: center; }
+.step-n { width: 2.75rem; height: 2.75rem; border-radius: 50%; border: 1px solid var(--border2); display: flex; align-items: center; justify-content: center; font-family: monospace; font-size: 0.8rem; color: var(--accent); margin: 0 auto 1rem; background: var(--bg); position: relative; z-index: 1; }
+.step-t { font-weight: 700; font-size: 0.9rem; margin-bottom: 0.35rem; }
+.step-d { font-size: 0.8rem; color: var(--muted); line-height: 1.6; font-weight: 300; }
+
+.cmp-table { width: 100%; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-top: 2.5rem; border-collapse: collapse; }
+.cmp-table th { padding: 0.875rem 1.25rem; border-bottom: 1px solid var(--border); font-size: 0.8rem; font-weight: 500; color: var(--muted); text-align: left; background: var(--bg2); }
+.cmp-table th.byot-h { color: var(--accent); font-weight: 700; font-size: 0.875rem; }
+.cmp-table td { padding: 0.8rem 1.25rem; border-bottom: 1px solid var(--border); font-size: 0.84rem; }
+.cmp-table td:first-child { color: var(--white); }
+.cmp-table td:not(:first-child) { color: var(--muted); text-align: center; }
+.cmp-table td.byot-col { background: rgba(0,232,122,0.025); }
+.yes { color: var(--accent); font-size: 1rem; }
+.no { color: var(--muted2); }
+.par { font-size: 0.72rem; color: var(--muted); }
+.cmp-table tr:last-child td { border-bottom: none; }
+
+.price-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 1.25rem; margin-top: 3rem; }
+.pc { border: 1px solid var(--border); border-radius: 8px; padding: 1.75rem; position: relative; }
+.pc.feat-pc { border-color: var(--accent); background: rgba(0,232,122,0.02); }
+.pc-badge { position: absolute; top: -1px; left: 50%; transform: translateX(-50%); background: var(--accent); color: #000; font-size: 0.65rem; font-weight: 600; padding: 0.2rem 0.7rem; border-radius: 0 0 4px 4px; font-family: monospace; letter-spacing: 0.05em; }
+.pc-tier { font-family: monospace; font-size: 0.7rem; color: var(--muted); letter-spacing: 0.1em; margin-bottom: 0.875rem; }
+.pc-price { font-size: 2.25rem; font-weight: 800; letter-spacing: -0.04em; margin-bottom: 0.2rem; }
+.pc-price sup { font-size: 1rem; font-weight: 400; }
+.pc-per { font-size: 0.78rem; color: var(--muted); margin-bottom: 1.25rem; }
+.pc-list { list-style: none; margin-bottom: 1.75rem; }
+.pc-list li { font-size: 0.84rem; color: var(--muted); padding: 0.35rem 0; display: flex; gap: 0.5rem; font-weight: 300; }
+.pc-list li::before { content: '→'; color: var(--accent); font-size: 0.7rem; margin-top: 2px; flex-shrink: 0; }
+.pc-btn { display: block; text-align: center; padding: 0.7rem; border-radius: 4px; font-size: 0.84rem; font-weight: 500; text-decoration: none; border: 1px solid var(--border2); color: var(--white); }
+.pc-btn.g { background: var(--accent); color: #000; border-color: var(--accent); }
+
+.quotes { display: grid; grid-template-columns: repeat(3,1fr); gap: 1.25rem; margin-top: 3rem; }
+.qc { border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; }
+.qt { font-size: 0.9rem; color: rgba(240,237,232,0.75); line-height: 1.75; font-style: italic; margin-bottom: 1.25rem; font-weight: 300; }
+.qa { display: flex; align-items: center; gap: 0.7rem; }
+.av { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 600; font-family: monospace; flex-shrink: 0; }
+.an { font-size: 0.84rem; font-weight: 500; }
+.ar { font-size: 0.75rem; color: var(--muted); font-weight: 300; }
+
+.cta-sec { padding: 7rem 2.5rem; text-align: center; background: radial-gradient(ellipse 60% 50% at 50% 50%, rgba(0,232,122,0.05) 0%, transparent 70%); }
+.cta-sec h2 { font-size: clamp(2rem,5vw,3.5rem); font-weight: 800; letter-spacing: -0.04em; line-height: 1.1; margin-bottom: 1.25rem; }
+.cta-sec p { color: var(--muted); font-size: 0.95rem; max-width: 420px; margin: 0 auto 2.5rem; font-weight: 300; line-height: 1.75; }
+
+footer { border-top: 1px solid var(--border); padding: 2.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; }
+.fl { font-size: 1.1rem; font-weight: 800; letter-spacing: -0.03em; }
+.fl em { color: var(--accent); font-style: normal; }
+.flinks { display: flex; gap: 1.75rem; list-style: none; }
+.flinks a { font-size: 0.8rem; color: var(--muted); text-decoration: none; }
+.flinks a:hover { color: var(--white); }
+.fc { font-size: 0.72rem; color: var(--muted2); font-family: monospace; }
+</style>
+
+<nav>
+  <div class="logo">BYO<em>T</em></div>
+  <ul class="nav-links">
+    <li><a href="#how-it-works">How it works</a></li>
+    <li><a href="#features">Features</a></li>
+    <li><a href="#pricing">Pricing</a></li>
+    <li><a href="https://github.com/alexanderritik/fnx#readme">Docs</a></li>
+    <li><a href="https://github.com/alexanderritik/fnx">GitHub</a></li>
+  </ul>
+  <a href="https://github.com/alexanderritik/fnx" class="nav-btn">Get started</a>
+</nav>
+
+<section class="hero">
+  <div class="pill"><div class="pill-dot"></div>open source · self-hostable · production-ready</div>
+  <h1>Your tests.<br><span class="ghost">Running in</span> <span class="green">production.</span></h1>
+  <p class="hero-p">Upload your existing Playwright, k6, or any test binary. BYOT runs it on a schedule, isolated in Docker, and wakes you up on Slack when something actually breaks.</p>
+  <div class="hero-btns">
+    <a href="https://github.com/alexanderritik/fnx" class="btn-g">Get started free →</a>
+    <a href="https://github.com/alexanderritik/fnx" class="btn-o">$ docker compose up byot</a>
+  </div>
+
+  <div class="term">
+    <div class="term-bar">
+      <div class="td td1"></div><div class="td td2"></div><div class="td td3"></div>
+      <span class="term-title">byot — live execution log</span>
+    </div>
+    <div class="term-body">
+      <div class="tc"># Upload your existing Playwright test</div>
+      <div class="tp"><em>$</em> byot deploy ./e2e/checkout.test --runtime node --severity P0</div>
+      <div class="to">✓ Binary uploaded  →  fnx/a3f8b2/binary</div>
+      <div class="to">✓ Scheduled every 30m</div>
+      <div class="to">✓ Slack webhook configured</div>
+      <div class="ts">→ Test ID: a3f8b2c1 · P0 · node runtime</div>
+      <br>
+      <div class="tc"># 30 minutes later — runs automatically</div>
+      <div class="to">2026-05-03T10:30:00Z [stdout] Starting checkout flow...</div>
+      <div class="to">2026-05-03T10:30:02Z [stdout] ✓ Login successful</div>
+      <div class="to">2026-05-03T10:30:04Z [stdout] ✓ Cart updated</div>
+      <div class="te">2026-05-03T10:30:06Z [stderr] ✗ Pay button not found</div>
+      <div class="te">2026-05-03T10:30:06Z [stderr] Test FAILED · 3rd consecutive failure</div>
+      <div class="to">→ Slack alert sent to #incidents · P0 escalated to on-call</div>
+    </div>
+  </div>
+</section>
+
+<div class="metrics-bar">
+  <div class="met"><div class="met-n">0</div><div class="met-l">lines to rewrite</div></div>
+  <div class="met"><div class="met-n">&lt;5m</div><div class="met-l">to first alert</div></div>
+  <div class="met"><div class="met-n">3+</div><div class="met-l">runtimes supported</div></div>
+  <div class="met"><div class="met-n">100%</div><div class="met-l">open source core</div></div>
+</div>
+
+<section class="sec" id="features">
+  <div class="sec-label">features</div>
+  <div class="sec-h">Built for engineers<br>who hate false alarms.</div>
+  <p class="sec-p">Smart alerting that learns which failures actually matter. No DSL to learn. No lock-in.</p>
+
+  <div class="feat-grid">
+    <div class="feat">
+      <div class="feat-icon fi-g">◈</div>
+      <div class="feat-t">Bring your own test</div>
+      <div class="feat-d">Upload any compiled binary. Playwright, k6, Cypress, custom scripts — if it runs, BYOT runs it.</div>
+    </div>
+    <div class="feat">
+      <div class="feat-icon fi-o">◷</div>
+      <div class="feat-t">Smart scheduling</div>
+      <div class="feat-d">Every 5 minutes or once a day. Cron syntax. Tests run isolated in Docker containers every time.</div>
+    </div>
+    <div class="feat">
+      <div class="feat-icon fi-b">◉</div>
+      <div class="feat-t">Flaky test detection</div>
+      <div class="feat-d">Fail 3 times in a row before alerting. Configurable thresholds per test. No 3am noise.</div>
+    </div>
+    <div class="feat">
+      <div class="feat-icon fi-g">≡</div>
+      <div class="feat-t">Streaming logs</div>
+      <div class="feat-d">Every stdout and stderr line captured with timestamps. Full history stored in S3/MinIO.</div>
+    </div>
+    <div class="feat">
+      <div class="feat-icon fi-o">◈</div>
+      <div class="feat-t">Severity levels</div>
+      <div class="feat-d">P0 wakes you at 3am. P3 goes in the weekly digest. You decide what matters.</div>
+    </div>
+    <div class="feat">
+      <div class="feat-icon fi-b">⌘</div>
+      <div class="feat-t">Alerts everywhere</div>
+      <div class="feat-d">Slack, PagerDuty, webhooks. Route P0 to on-call, P2 to a channel. Full control.</div>
+    </div>
+  </div>
+</section>
+
+<hr class="div">
+
+<section class="sec" id="how-it-works">
+  <div class="sec-label">how it works</div>
+  <div class="sec-h">Up in 4 steps.</div>
+  <div class="steps-row">
+    <div class="step">
+      <div class="step-n">01</div>
+      <div class="step-t">Upload</div>
+      <div class="step-d">Push your compiled test binary. Any language, any framework.</div>
+    </div>
+    <div class="step">
+      <div class="step-n">02</div>
+      <div class="step-t">Configure</div>
+      <div class="step-d">Set schedule, severity, alert destinations. Takes 2 minutes.</div>
+    </div>
+    <div class="step">
+      <div class="step-n">03</div>
+      <div class="step-t">Run</div>
+      <div class="step-d">BYOT executes in isolated Docker containers and streams every log line.</div>
+    </div>
+    <div class="step">
+      <div class="step-n">04</div>
+      <div class="step-t">Alert</div>
+      <div class="step-d">Only real failures wake you up. Smart thresholds filter the noise.</div>
+    </div>
+  </div>
+</section>
+
+<hr class="div">
+
+<section class="sec">
+  <div class="sec-label">comparison</div>
+  <div class="sec-h">Why not Datadog?</div>
+  <p class="sec-p">Because you shouldn't have to rewrite your tests in someone else's DSL.</p>
+  <table class="cmp-table">
+    <thead>
+      <tr>
+        <th>Feature</th>
+        <th class="byot-h">BYOT</th>
+        <th>Datadog</th>
+        <th>Checkly</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Use existing tests</td>
+        <td class="byot-col"><span class="yes">✓</span></td>
+        <td><span class="no">✗</span></td>
+        <td><span class="no">✗</span></td>
+      </tr>
+      <tr>
+        <td>Self-hostable</td>
+        <td class="byot-col"><span class="yes">✓</span></td>
+        <td><span class="no">✗</span></td>
+        <td><span class="no">✗</span></td>
+      </tr>
+      <tr>
+        <td>Open source</td>
+        <td class="byot-col"><span class="yes">✓</span></td>
+        <td><span class="no">✗</span></td>
+        <td><span class="no">✗</span></td>
+      </tr>
+      <tr>
+        <td>Flaky test detection</td>
+        <td class="byot-col"><span class="yes">✓</span></td>
+        <td><span class="par">paid tier</span></td>
+        <td><span class="par">limited</span></td>
+      </tr>
+      <tr>
+        <td>Custom runtimes</td>
+        <td class="byot-col"><span class="yes">✓</span></td>
+        <td><span class="no">✗</span></td>
+        <td><span class="par">limited</span></td>
+      </tr>
+      <tr>
+        <td>Free tier</td>
+        <td class="byot-col"><span class="yes">unlimited</span></td>
+        <td><span class="par">5 tests</span></td>
+        <td><span class="par">3 tests</span></td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<hr class="div">
+
+<section class="sec">
+  <div class="sec-label">vs ci/cd</div>
+  <div class="sec-h">"Can't I just use<br>GitHub Actions cron?"</div>
+  <p class="sec-p">Yes. But CI runs on code changes. Production breaks between deploys.</p>
+
+  <div class="feat-grid" style="margin-top:3rem">
+    <div class="feat">
+      <div class="feat-icon fi-o">◷</div>
+      <div class="feat-t">The 3pm problem</div>
+      <div class="feat-d">Deploy ships at 9am ✓. Stripe silently changes their API at 3pm. Payments break at 11pm. Customer complains Tuesday morning. Your CI never ran — it had no code change to trigger on.</div>
+    </div>
+    <div class="feat">
+      <div class="feat-icon fi-g">◈</div>
+      <div class="feat-t">CI tests your code. BYOT tests your dependencies.</div>
+      <div class="feat-d">Third-party API change. CDN outage. Database out of connections. Expired SSL cert. None of these show up in CI. All of them show up in BYOT.</div>
+    </div>
+    <div class="feat">
+      <div class="feat-icon fi-b">◉</div>
+      <div class="feat-t">CI is for developers. BYOT is for the business.</div>
+      <div class="feat-d">CI answers "did my code break?" BYOT answers "is my checkout working right now?" — the question your product manager and founder actually care about.</div>
+    </div>
+  </div>
+</section>
+
+<hr class="div">
+
+<section class="sec" id="pricing">
+  <div class="sec-label">pricing</div>
+  <div class="sec-h">Simple pricing.<br>No surprises.</div>
+  <div class="price-grid">
+    <div class="pc">
+      <div class="pc-tier">OPEN SOURCE</div>
+      <div class="pc-price">Free</div>
+      <div class="pc-per">self-hosted forever</div>
+      <ul class="pc-list">
+        <li>Unlimited tests</li>
+        <li>All runtimes</li>
+        <li>Slack + webhook alerts</li>
+        <li>Full source code</li>
+        <li>Community support</li>
+      </ul>
+      <a href="https://github.com/alexanderritik/fnx#self-hosting" class="pc-btn">Deploy yourself</a>
+    </div>
+    <div class="pc feat-pc">
+      <div class="pc-badge">MOST POPULAR</div>
+      <div class="pc-tier">CLOUD</div>
+      <div class="pc-price"><sup>$</sup>29</div>
+      <div class="pc-per">per month · up to 10 seats</div>
+      <ul class="pc-list">
+        <li>Everything in open source</li>
+        <li>Managed infrastructure</li>
+        <li>PagerDuty integration</li>
+        <li>90-day execution history</li>
+        <li>Email support</li>
+      </ul>
+      <a href="#" class="pc-btn g">Start free trial</a>
+    </div>
+    <div class="pc">
+      <div class="pc-tier">ENTERPRISE</div>
+      <div class="pc-price">Custom</div>
+      <div class="pc-per">for large teams</div>
+      <ul class="pc-list">
+        <li>Everything in Cloud</li>
+        <li>SSO / SAML</li>
+        <li>Custom data retention</li>
+        <li>SLA guarantee</li>
+        <li>Dedicated support</li>
+      </ul>
+      <a href="#" class="pc-btn">Talk to us</a>
+    </div>
+  </div>
+</section>
+
+<hr class="div">
+
+<section class="sec">
+  <div class="sec-label">from the community</div>
+  <div class="sec-h">Engineers love it.</div>
+  <div class="quotes">
+    <div class="qc">
+      <div class="qt">"We had 200 Playwright tests sitting in CI. BYOT turned them into production monitors in an afternoon. Zero rewrites."</div>
+      <div class="qa">
+        <div class="av" style="background:rgba(0,232,122,0.1);color:var(--accent)">SR</div>
+        <div><div class="an">Sarah R.</div><div class="ar">Staff Engineer, Fintech</div></div>
+      </div>
+    </div>
+    <div class="qc">
+      <div class="qt">"Finally. A monitoring tool that doesn't make me learn a new language just to check if my checkout page works."</div>
+      <div class="qa">
+        <div class="av" style="background:rgba(255,69,0,0.1);color:var(--accent2)">MK</div>
+        <div><div class="an">Marcus K.</div><div class="ar">Lead Developer, E-commerce</div></div>
+      </div>
+    </div>
+    <div class="qc">
+      <div class="qt">"The flaky test detection alone saved our on-call rotation. We went from 20 alerts a night to 2."</div>
+      <div class="qa">
+        <div class="av" style="background:rgba(100,180,255,0.1);color:#64b4ff">AP</div>
+        <div><div class="an">Anika P.</div><div class="ar">Platform Engineer, SaaS</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="cta-sec">
+  <h2>Stop finding out<br>from your customers.</h2>
+  <p>Deploy BYOT in 5 minutes. Your existing tests start monitoring production today.</p>
+  <div class="hero-btns">
+    <a href="https://github.com/alexanderritik/fnx" class="btn-g">Start free →</a>
+    <a href="https://github.com/alexanderritik/fnx" class="btn-o">★ Star on GitHub</a>
+  </div>
+</section>
+
+<footer>
+  <div class="fl">BYO<em>T</em></div>
+  <ul class="flinks">
+    <li><a href="https://github.com/alexanderritik/fnx#readme">Documentation</a></li>
+    <li><a href="https://github.com/alexanderritik/fnx">GitHub</a></li>
+    <li><a href="#">Discord</a></li>
+    <li><a href="#">Blog</a></li>
+    <li><a href="#">Privacy</a></li>
+  </ul>
+  <div class="fc">© 2026 BYOT · MIT License</div>
+</footer>

@@ -11,6 +11,7 @@ import (
 	"github.com/alexanderritik/mini-lambda/runtime"
 	"github.com/alexanderritik/mini-lambda/storage"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
 )
 
@@ -18,10 +19,14 @@ const maxFileSize = 10 << 20
 
 type Handler struct {
 	storage storage.Storage
+	pool    *pgxpool.Pool
 }
 
-func NewHandler(storage storage.Storage) *Handler {
-	return &Handler{storage: storage}
+func NewHandler(storage storage.Storage, pool *pgxpool.Pool) *Handler {
+	return &Handler{
+		storage: storage,
+		pool:    pool,
+	}
 }
 
 func jsonResponse(h http.ResponseWriter, status int, v any) {
@@ -115,6 +120,13 @@ func (hl *Handler) UploadBinary(h http.ResponseWriter, r *http.Request) {
 
 	if r.Method != "POST" {
 		jsonResponse(h, http.StatusMethodNotAllowed, map[string]string{"error": "POST only accepted"})
+		return
+	}
+	runtime := r.FormValue("runtime")
+	severity := r.FormValue("severity")
+	if runtime == "" || severity == "" {
+		logger.Error().Msg("We required Runtime and Severity in input.")
+		jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "required Runtime and Severity in input"})
 		return
 	}
 
