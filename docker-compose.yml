@@ -1,0 +1,50 @@
+services:
+  # fnx:
+  #   build: .
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     - ENV=development
+  #     - MINIO_ENDPOINT=minio:9000
+  #     - MINIO_ACCESS_KEY=minioadmin
+  #     - MINIO_SECRET_KEY=minioadmin
+  #     - DB_URL=postgres://fnx:fnx@postgres:5432/fnx?sslmode=disable
+  #   depends_on:
+  #     - minio
+  #     - postgres
+
+  minio:
+    image: cgr.dev/chainguard/minio:latest
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    volumes:
+      - minio_data:/data
+      
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=fnx
+      - POSTGRES_PASSWORD=fnx
+      - POSTGRES_DB=fnx
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    ports:
+      - "9443:9443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+
+volumes:
+  minio_data:
+  postgres_data:
+  portainer_data:

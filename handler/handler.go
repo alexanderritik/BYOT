@@ -1,19 +1,28 @@
 package handler
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"time"
 
 	"github.com/alexanderritik/mini-lambda/runtime"
+	"github.com/alexanderritik/mini-lambda/storage"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 )
 
 const maxFileSize = 10 << 20
+
+type Handler struct {
+	storage storage.Storage
+}
+
+func NewHandler(storage storage.Storage) *Handler {
+	return &Handler{storage: storage}
+}
 
 func jsonResponse(h http.ResponseWriter, status int, v any) {
 	h.Header().Set("Content-Type", "application/json")
@@ -26,17 +35,17 @@ func jsonResponse(h http.ResponseWriter, status int, v any) {
 	h.Write(val)
 }
 
-func IsHealth(h http.ResponseWriter, r *http.Request) {
-	jsonResponse(h, http.StatusOK, map[string]string{"status": "ok"})
-}
-
 type RunRequest struct {
 	Filename string `json:"filename"`
 	Runtime  string `json:"runtime"`
 	Timeout  int    `json:"timeout"`
 }
 
-func Run(h http.ResponseWriter, r *http.Request) {
+func (hl *Handler) IsHealth(h http.ResponseWriter, r *http.Request) {
+	jsonResponse(h, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (hl *Handler) Run(h http.ResponseWriter, r *http.Request) {
 
 	var req RunRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -56,6 +65,27 @@ func Run(h http.ResponseWriter, r *http.Request) {
 		Logger()
 
 	logger.Info().Str("runtime", req.Runtime).Msg("function execution requested")
+
+	// 1. Download from MinIO
+	reader, err := hl.storage.DownloadBlob(req.Filename + "/binary")
+	if err != nil {
+		jsonResponse(h, http.StatusInternalServerError, map[string]string{"error": "failed to download binary"})
+		return
+	}
+
+	// 2. Save to /tmp
+	tmpPath := "/tmp/" + req.Filename
+	dst, err := os.Create(tmpPath)
+	if err != nil {
+		jsonResponse(h, http.StatusInternalServerError, map[string]string{"error": "failed to create temp file"})
+		return
+	}
+	io.Copy(dst, reader)
+	dst.Close()
+
+	// 3. Make executable + cleanup after
+	os.Chmod(tmpPath, 0755)
+	defer os.Remove(tmpPath)
 	rt := runtime.GetRuntime(req.Runtime)
 	if rt == nil {
 		jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "unsupported runtime"})
@@ -70,11 +100,15 @@ func Run(h http.ResponseWriter, r *http.Request) {
 		jsonResponse(h, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	// Upload logs to MinIO
+	logReader := bytes.NewReader(output)
+	hl.storage.UploadLog(req.Filename, logReader, int64(len(output)))
+
 	logger.Info().Int64("duration_ms", duration.Milliseconds()).Msg("function execution completed")
 	jsonResponse(h, http.StatusOK, map[string]string{"output": string(output)})
 }
 
-func UploadBinary(h http.ResponseWriter, r *http.Request) {
+func (hl *Handler) UploadBinary(h http.ResponseWriter, r *http.Request) {
 	logger := log.With().
 		Str("request_id", uuid.NewString()).
 		Logger()
@@ -105,20 +139,16 @@ func UploadBinary(h http.ResponseWriter, r *http.Request) {
 	}
 
 	fileName := uuid.NewString()
-	dst, err := os.Create("uploads/" + fileName)
+	dst, err := hl.storage.UploadBinary(fileName, file, header.Size)
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to create file on disk")
 		jsonResponse(h, http.StatusInternalServerError, map[string]string{"error": "failed to create file"})
 		return
 	}
-	defer dst.Close()
-
-	io.Copy(dst, file)
-	exec.Command("chmod", "+x", "uploads/"+fileName).Run()
 
 	logger.Info().Str("uuid", fileName).Msg("binary uploaded successfully")
 	jsonResponse(h, http.StatusOK, map[string]string{
-		"id":      fileName,
+		"id":      dst,
 		"message": "binary uploaded successfully",
 	})
 }

@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"context"
-	"os"
 	"os/exec"
 	"time"
 )
@@ -21,21 +20,14 @@ type NodeRuntime struct {
 }
 
 func dockerRun(image, command, filename string, timeout int) ([]byte, error) {
-	wd, err := os.Getwd()
-	if err != nil {
-		return nil, err
-	}
-	args := []string{"run", "--rm", "-v", wd + "/uploads:/app", image}
+	args := []string{"run", "--rm", "-v", "/tmp/" + filename + ":/app/binary", image}
 	if command != "" {
 		args = append(args, command)
 	}
-	args = append(args, "/app/"+filename)
-
+	args = append(args, "/app/binary")
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
 	defer cancel()
-
-	out, err := exec.CommandContext(ctx, "docker", args...).CombinedOutput()
-	return out, err
+	return exec.CommandContext(ctx, "docker", args...).CombinedOutput()
 }
 
 func (g GoRuntime) Run(filename string, timeout int) ([]byte, error) {
