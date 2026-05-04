@@ -1,0 +1,1 @@
+ALTER TABLE tests ADD COLUMN timeout_seconds INT NOT NULL DEFAULT 30;

@@ -6,26 +6,30 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
+	"github.com/alexanderritik/mini-lambda/model"
+	"github.com/alexanderritik/mini-lambda/repository"
 	"github.com/alexanderritik/mini-lambda/runtime"
 	"github.com/alexanderritik/mini-lambda/storage"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
 )
 
 const maxFileSize = 10 << 20
 
 type Handler struct {
-	storage storage.Storage
-	pool    *pgxpool.Pool
+	storage     storage.Storage
+	test        repository.TestRepository
+	testRunRepo repository.TestRunRepository
 }
 
-func NewHandler(storage storage.Storage, pool *pgxpool.Pool) *Handler {
+func NewHandler(storage storage.Storage, test repository.TestRepository, testRun repository.TestRunRepository) *Handler {
 	return &Handler{
-		storage: storage,
-		pool:    pool,
+		storage:     storage,
+		test:        test,
+		testRunRepo: testRun,
 	}
 }
 
@@ -41,9 +45,7 @@ func jsonResponse(h http.ResponseWriter, status int, v any) {
 }
 
 type RunRequest struct {
-	Filename string `json:"filename"`
-	Runtime  string `json:"runtime"`
-	Timeout  int    `json:"timeout"`
+	TestId string `json:"testId"`
 }
 
 func (hl *Handler) IsHealth(h http.ResponseWriter, r *http.Request) {
@@ -57,29 +59,34 @@ func (hl *Handler) Run(h http.ResponseWriter, r *http.Request) {
 		jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
 	}
-	if req.Filename == "" || req.Runtime == "" {
-		jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "filename and runtime are required"})
+	if req.TestId == "" {
+		jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "Test UUID is missing"})
 		return
-	}
-	if req.Timeout == 0 {
-		req.Timeout = 30
 	}
 	logger := log.With().
 		Str("request_id", uuid.NewString()).
-		Str("filename", req.Filename).
+		Str("filename", req.TestId).
 		Logger()
 
-	logger.Info().Str("runtime", req.Runtime).Msg("function execution requested")
+	testRes, err := hl.test.GetByID(r.Context(), req.TestId)
+	if err != nil {
+		jsonResponse(h, http.StatusNotFound, map[string]string{
+			"error": "Request Test Id not found",
+		})
+		return
+	}
+
+	logger.Info().Str("runtime", testRes.Runtime).Msg("function execution requested")
 
 	// 1. Download from MinIO
-	reader, err := hl.storage.DownloadBlob(req.Filename + "/binary")
+	reader, err := hl.storage.DownloadBlob(testRes.UUID + "/binary")
 	if err != nil {
 		jsonResponse(h, http.StatusInternalServerError, map[string]string{"error": "failed to download binary"})
 		return
 	}
 
 	// 2. Save to /tmp
-	tmpPath := "/tmp/" + req.Filename
+	tmpPath := "/tmp/" + testRes.UUID
 	dst, err := os.Create(tmpPath)
 	if err != nil {
 		jsonResponse(h, http.StatusInternalServerError, map[string]string{"error": "failed to create temp file"})
@@ -91,14 +98,14 @@ func (hl *Handler) Run(h http.ResponseWriter, r *http.Request) {
 	// 3. Make executable + cleanup after
 	os.Chmod(tmpPath, 0755)
 	defer os.Remove(tmpPath)
-	rt := runtime.GetRuntime(req.Runtime)
+	rt := runtime.GetRuntime(testRes.Runtime)
 	if rt == nil {
 		jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "unsupported runtime"})
 		return
 	}
 
 	start := time.Now()
-	output, err := rt.Run(req.Filename, req.Timeout)
+	output, err := rt.Run(testRes.UUID, testRes.TimeoutSeconds)
 	duration := time.Since(start)
 	if err != nil {
 		logger.Error().Err(err).Int64("duration_ms", duration.Milliseconds()).Msg("function execution failed")
@@ -107,7 +114,28 @@ func (hl *Handler) Run(h http.ResponseWriter, r *http.Request) {
 	}
 	// Upload logs to MinIO
 	logReader := bytes.NewReader(output)
-	hl.storage.UploadLog(req.Filename, logReader, int64(len(output)))
+	logUrl, err := hl.storage.UploadLog(testRes.UUID, logReader, int64(len(output)))
+
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to upload logs")
+	}
+
+	testRun := &model.TestRun{
+		UUID:         uuid.NewString(),
+		TestID:       testRes.UUID,
+		StartedAt:    start,
+		DurationMs:   duration.Milliseconds(),
+		LogURL:       logUrl,
+		FinishedAt:   time.Now(),
+		Status:       "pass",
+		LogSizeBytes: int64(len(output)),
+	}
+	if err := hl.testRunRepo.Create(r.Context(), testRun); err != nil {
+		jsonResponse(h, http.StatusInternalServerError, map[string]string{
+			"error": "binary uploaded failed",
+		})
+		return
+	}
 
 	logger.Info().Int64("duration_ms", duration.Milliseconds()).Msg("function execution completed")
 	jsonResponse(h, http.StatusOK, map[string]string{"output": string(output)})
@@ -124,6 +152,11 @@ func (hl *Handler) UploadBinary(h http.ResponseWriter, r *http.Request) {
 	}
 	runtime := r.FormValue("runtime")
 	severity := r.FormValue("severity")
+	timeoutStr := r.FormValue("timeout")
+	timeout, err := strconv.Atoi(timeoutStr)
+	if err != nil || timeout == 0 {
+		timeout = 30 // default
+	}
 	if runtime == "" || severity == "" {
 		logger.Error().Msg("We required Runtime and Severity in input.")
 		jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "required Runtime and Severity in input"})
@@ -159,6 +192,21 @@ func (hl *Handler) UploadBinary(h http.ResponseWriter, r *http.Request) {
 	}
 
 	logger.Info().Str("uuid", fileName).Msg("binary uploaded successfully")
+
+	test := &model.Test{
+		UUID:             fileName,
+		OriginalFilename: header.Filename,
+		Runtime:          runtime,
+		Severity:         severity,
+		BinaryURL:        dst,
+		TimeoutSeconds:   timeout,
+	}
+	if err := hl.test.Create(r.Context(), test); err != nil {
+		jsonResponse(h, http.StatusInternalServerError, map[string]string{
+			"error": "binary uploaded failed",
+		})
+		return
+	}
 	jsonResponse(h, http.StatusOK, map[string]string{
 		"id":      dst,
 		"message": "binary uploaded successfully",

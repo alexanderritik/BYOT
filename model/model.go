@@ -10,6 +10,7 @@ type Test struct {
 	Runtime          string    `db:"runtime"`
 	Severity         string    `db:"severity"`
 	BinaryURL        string    `db:"binary_url"`
+	TimeoutSeconds   int       `db:"timeout_seconds"`
 	CreatedAt        time.Time `db:"created_at"`
 }
 type TestRun struct {

@@ -36,8 +36,9 @@ func (r *postgresTestRepository) Create(ctx context.Context, test *model.Test) e
 
 func (r *postgresTestRepository) GetByID(ctx context.Context, uuid string) (*model.Test, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT uuid, runtime, original_filename, severity, binary_url, created_at
-         FROM tests WHERE uuid = $1`, uuid,
+		`SELECT uuid, runtime, original_filename, severity, binary_url, created_at, timeout_seconds
+     FROM tests WHERE uuid = $1`,
+		uuid,
 	)
 	if err != nil {
 		return nil, err

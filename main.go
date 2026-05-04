@@ -6,6 +6,7 @@ import (
 	"github.com/alexanderritik/mini-lambda/config"
 	"github.com/alexanderritik/mini-lambda/db"
 	"github.com/alexanderritik/mini-lambda/handler"
+	"github.com/alexanderritik/mini-lambda/repository"
 	"github.com/alexanderritik/mini-lambda/storage"
 
 	"github.com/golang-migrate/migrate/v4"
@@ -51,7 +52,10 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to connect to minio")
 	}
 
-	handle := handler.NewHandler(store, pool)
+	testRepo := repository.NewTestRepository(pool)
+	testRunRepo := repository.NewTestRunRepository(pool)
+
+	handle := handler.NewHandler(store, testRepo, testRunRepo)
 
 	// pass store to handler
 	http.HandleFunc("/health", handle.IsHealth)
