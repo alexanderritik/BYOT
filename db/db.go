@@ -10,7 +10,7 @@ import (
 func Connect(dbURL string) (*pgxpool.Pool, error) {
 
 	ctx := context.Background()
-
+	println("Connecting to postgres...", dbURL)
 	config, _ := pgxpool.ParseConfig(dbURL)
 	config.MaxConns = 25 // max 25 connections
 	config.MinConns = 5  // keep 5 warm

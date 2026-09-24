@@ -1,6 +1,11 @@
 package config
 
-import "os"
+import (
+	"log"
+	"os"
+
+	"github.com/joho/godotenv"
+)
 
 type Config struct {
 	MinioEndpoint  string
@@ -11,6 +16,12 @@ type Config struct {
 }
 
 func LoadConfig() Config {
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	println("Loading config...", os.Getenv("MINIO_ENDPOINT"), os.Getenv("MINIO_ACCESS_KEY"), os.Getenv("MINIO_SECRET_KEY"), os.Getenv("MINIO_BUCKET"), os.Getenv("DB_URL"))
 	return Config{
 		MinioEndpoint:  os.Getenv("MINIO_ENDPOINT"),
 		MinioAccessKey: os.Getenv("MINIO_ACCESS_KEY"),

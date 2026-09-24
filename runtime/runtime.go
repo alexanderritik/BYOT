@@ -4,13 +4,16 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"os/exec"
 	"sync"
 	"time"
 )
 
 type Runtime interface {
-	Run(filename string, timeout int) ([]byte, error)
+	// exitCode is the test binary's own exit code (0 = pass, non-zero = fail).
+	// err is only set for infra-level failures (docker missing, timeout, etc).
+	Run(filename string, timeout int) (output []byte, exitCode int, err error)
 }
 type GoRuntime struct {
 	Image   string // "alpine"
@@ -22,7 +25,7 @@ type NodeRuntime struct {
 	Command string // "node"
 }
 
-func dockerRun(image, command, filename string, timeout int) ([]byte, error) {
+func dockerRun(image, command, filename string, timeout int) ([]byte, int, error) {
 	args := []string{"run", "--rm", "-v", "/tmp/" + filename + ":/app/binary", image}
 	if command != "" {
 		args = append(args, command)
@@ -60,15 +63,24 @@ func dockerRun(image, command, filename string, timeout int) ([]byte, error) {
 
 	// Wait for process to finish
 	wg.Wait()
-	cmd.Wait()
+	waitErr := cmd.Wait()
 
-	return buf.Bytes(), nil
+	var exitErr *exec.ExitError
+	if errors.As(waitErr, &exitErr) {
+		// Non-zero exit is the test binary failing, not an infra error.
+		return buf.Bytes(), exitErr.ExitCode(), nil
+	}
+	if waitErr != nil {
+		return buf.Bytes(), -1, waitErr
+	}
+
+	return buf.Bytes(), 0, nil
 }
 
-func (g GoRuntime) Run(filename string, timeout int) ([]byte, error) {
+func (g GoRuntime) Run(filename string, timeout int) ([]byte, int, error) {
 	return dockerRun(g.Image, g.Command, filename, timeout)
 }
-func (g NodeRuntime) Run(filename string, timeout int) ([]byte, error) {
+func (g NodeRuntime) Run(filename string, timeout int) ([]byte, int, error) {
 	return dockerRun(g.Image, g.Command, filename, timeout)
 }
 

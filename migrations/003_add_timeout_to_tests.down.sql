@@ -1,0 +1,1 @@
+ALTER TABLE tests DROP COLUMN timeout_seconds;

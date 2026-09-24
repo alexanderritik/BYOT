@@ -1,17 +1,13 @@
 package handler
 
 import (
-	"bytes"
 	"encoding/json"
-	"io"
 	"net/http"
-	"os"
 	"strconv"
-	"time"
 
 	"github.com/alexanderritik/mini-lambda/model"
+	"github.com/alexanderritik/mini-lambda/queue"
 	"github.com/alexanderritik/mini-lambda/repository"
-	"github.com/alexanderritik/mini-lambda/runtime"
 	"github.com/alexanderritik/mini-lambda/storage"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
@@ -23,13 +19,15 @@ type Handler struct {
 	storage     storage.Storage
 	test        repository.TestRepository
 	testRunRepo repository.TestRunRepository
+	queue       *queue.Queue
 }
 
-func NewHandler(storage storage.Storage, test repository.TestRepository, testRun repository.TestRunRepository) *Handler {
+func NewHandler(storage storage.Storage, test repository.TestRepository, testRun repository.TestRunRepository, q *queue.Queue) *Handler {
 	return &Handler{
 		storage:     storage,
 		test:        test,
 		testRunRepo: testRun,
+		queue:       q,
 	}
 }
 
@@ -52,6 +50,35 @@ func (hl *Handler) IsHealth(h http.ResponseWriter, r *http.Request) {
 	jsonResponse(h, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+func (hl *Handler) JobStatus(h http.ResponseWriter, r *http.Request) {
+	jobID := r.URL.Path[len("/status/"):]
+	if jobID == "" {
+		jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "job ID is missing"})
+		return
+	}
+
+	job, err := hl.queue.GetStatus(r.Context(), jobID)
+	if err != nil {
+		jsonResponse(h, http.StatusNotFound, map[string]string{"error": "job not found"})
+		return
+	}
+
+	response := map[string]interface{}{
+		"job_id":      job.UUID,
+		"test_id":     job.TestID,
+		"status":      job.Status,
+		"queued_at":   job.QueuedAt,
+		"started_at":  job.StartedAt,
+		"finished_at": job.FinishedAt,
+		"worker_id":   job.WorkerID,
+	}
+	if job.ErrorMessage != nil {
+		response["error"] = *job.ErrorMessage
+	}
+
+	jsonResponse(h, http.StatusOK, response)
+}
+
 func (hl *Handler) Run(h http.ResponseWriter, r *http.Request) {
 
 	var req RunRequest
@@ -68,6 +95,7 @@ func (hl *Handler) Run(h http.ResponseWriter, r *http.Request) {
 		Str("filename", req.TestId).
 		Logger()
 
+	// Verify test exists
 	testRes, err := hl.test.GetByID(r.Context(), req.TestId)
 	if err != nil {
 		jsonResponse(h, http.StatusNotFound, map[string]string{
@@ -78,67 +106,19 @@ func (hl *Handler) Run(h http.ResponseWriter, r *http.Request) {
 
 	logger.Info().Str("runtime", testRes.Runtime).Msg("function execution requested")
 
-	// 1. Download from MinIO
-	reader, err := hl.storage.DownloadBlob(testRes.UUID + "/binary")
+	// Enqueue job instead of executing synchronously
+	job, err := hl.queue.Enqueue(r.Context(), testRes.UUID)
 	if err != nil {
-		jsonResponse(h, http.StatusInternalServerError, map[string]string{"error": "failed to download binary"})
+		jsonResponse(h, http.StatusInternalServerError, map[string]string{"error": "failed to enqueue job"})
 		return
 	}
 
-	// 2. Save to /tmp
-	tmpPath := "/tmp/" + testRes.UUID
-	dst, err := os.Create(tmpPath)
-	if err != nil {
-		jsonResponse(h, http.StatusInternalServerError, map[string]string{"error": "failed to create temp file"})
-		return
-	}
-	io.Copy(dst, reader)
-	dst.Close()
-
-	// 3. Make executable + cleanup after
-	os.Chmod(tmpPath, 0755)
-	defer os.Remove(tmpPath)
-	rt := runtime.GetRuntime(testRes.Runtime)
-	if rt == nil {
-		jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "unsupported runtime"})
-		return
-	}
-
-	start := time.Now()
-	output, err := rt.Run(testRes.UUID, testRes.TimeoutSeconds)
-	duration := time.Since(start)
-	if err != nil {
-		logger.Error().Err(err).Int64("duration_ms", duration.Milliseconds()).Msg("function execution failed")
-		jsonResponse(h, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
-	// Upload logs to MinIO
-	logReader := bytes.NewReader(output)
-	logUrl, err := hl.storage.UploadLog(testRes.UUID, logReader, int64(len(output)))
-
-	if err != nil {
-		logger.Error().Err(err).Msg("failed to upload logs")
-	}
-
-	testRun := &model.TestRun{
-		UUID:         uuid.NewString(),
-		TestID:       testRes.UUID,
-		StartedAt:    start,
-		DurationMs:   duration.Milliseconds(),
-		LogURL:       logUrl,
-		FinishedAt:   time.Now(),
-		Status:       "pass",
-		LogSizeBytes: int64(len(output)),
-	}
-	if err := hl.testRunRepo.Create(r.Context(), testRun); err != nil {
-		jsonResponse(h, http.StatusInternalServerError, map[string]string{
-			"error": "binary uploaded failed",
-		})
-		return
-	}
-
-	logger.Info().Int64("duration_ms", duration.Milliseconds()).Msg("function execution completed")
-	jsonResponse(h, http.StatusOK, map[string]string{"output": string(output)})
+	// Return 202 Accepted with job ID
+	jsonResponse(h, http.StatusAccepted, map[string]string{
+		"job_id":  job.UUID,
+		"status":  "queued",
+		"message": "job queued for execution",
+	})
 }
 
 func (hl *Handler) UploadBinary(h http.ResponseWriter, r *http.Request) {

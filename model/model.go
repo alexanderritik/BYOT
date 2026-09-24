@@ -23,3 +23,14 @@ type TestRun struct {
 	LogURL       string    `db:"log_url"`
 	LogSizeBytes int64     `db:"log_size_bytes"`
 }
+
+type Job struct {
+	UUID         string     `db:"uuid"`
+	TestID       string     `db:"test_id"`
+	Status       string     `db:"status"`
+	QueuedAt     time.Time  `db:"queued_at"`
+	StartedAt    *time.Time `db:"started_at"`
+	FinishedAt   *time.Time `db:"finished_at"`
+	WorkerID     *string    `db:"worker_id"`
+	ErrorMessage *string    `db:"error_message"`
+}
