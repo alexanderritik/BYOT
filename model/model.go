@@ -6,10 +6,12 @@ import (
 
 type Test struct {
 	UUID             string    `db:"uuid"`
+	Name             string    `db:"name"`
 	OriginalFilename string    `db:"original_filename"`
 	Runtime          string    `db:"runtime"`
+	Command          string    `db:"command"`
 	Severity         string    `db:"severity"`
-	BinaryURL        string    `db:"binary_url"`
+	ArtifactKey      string    `db:"artifact_key"`
 	TimeoutSeconds   int       `db:"timeout_seconds"`
 	CreatedAt        time.Time `db:"created_at"`
 }

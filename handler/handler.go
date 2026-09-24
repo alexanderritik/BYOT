@@ -132,14 +132,15 @@ func (hl *Handler) UploadBinary(h http.ResponseWriter, r *http.Request) {
 	}
 	runtime := r.FormValue("runtime")
 	severity := r.FormValue("severity")
+	command := r.FormValue("command")
 	timeoutStr := r.FormValue("timeout")
 	timeout, err := strconv.Atoi(timeoutStr)
 	if err != nil || timeout == 0 {
 		timeout = 30 // default
 	}
-	if runtime == "" || severity == "" {
-		logger.Error().Msg("We required Runtime and Severity in input.")
-		jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "required Runtime and Severity in input"})
+	if runtime == "" || severity == "" || command == "" {
+		logger.Error().Msg("We required Runtime, Severity, and Command in input.")
+		jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "required Runtime, Severity, and Command in input"})
 		return
 	}
 
@@ -164,7 +165,7 @@ func (hl *Handler) UploadBinary(h http.ResponseWriter, r *http.Request) {
 	}
 
 	fileName := uuid.NewString()
-	dst, err := hl.storage.UploadBinary(fileName, file, header.Size)
+	dst, err := hl.storage.UploadArtifact(fileName, file, header.Size)
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to create file on disk")
 		jsonResponse(h, http.StatusInternalServerError, map[string]string{"error": "failed to create file"})
@@ -175,10 +176,12 @@ func (hl *Handler) UploadBinary(h http.ResponseWriter, r *http.Request) {
 
 	test := &model.Test{
 		UUID:             fileName,
+		Name:             header.Filename,
 		OriginalFilename: header.Filename,
 		Runtime:          runtime,
+		Command:          command,
 		Severity:         severity,
-		BinaryURL:        dst,
+		ArtifactKey:      dst,
 		TimeoutSeconds:   timeout,
 	}
 	if err := hl.test.Create(r.Context(), test); err != nil {

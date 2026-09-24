@@ -23,20 +23,23 @@ func NewTestRepository(pool *pgxpool.Pool) TestRepository {
 
 func (r *postgresTestRepository) Create(ctx context.Context, test *model.Test) error {
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO tests (uuid, runtime, original_filename, severity, binary_url)
-         VALUES ($1, $2, $3, $4, $5)`,
+		`INSERT INTO tests (uuid, name, runtime, original_filename, severity, command, artifact_key, timeout_seconds)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
 		test.UUID,
+		test.Name,
 		test.Runtime,
 		test.OriginalFilename,
 		test.Severity,
-		test.BinaryURL,
+		test.Command,
+		test.ArtifactKey,
+		test.TimeoutSeconds,
 	)
 	return err
 }
 
 func (r *postgresTestRepository) GetByID(ctx context.Context, uuid string) (*model.Test, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT uuid, runtime, original_filename, severity, binary_url, created_at, timeout_seconds
+		`SELECT uuid, name, runtime, original_filename, severity, command, artifact_key, created_at, timeout_seconds
      FROM tests WHERE uuid = $1`,
 		uuid,
 	)

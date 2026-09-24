@@ -11,7 +11,7 @@ import (
 )
 
 type Storage interface {
-	UploadBinary(filepath string, data io.Reader, size int64) (string, error)
+	UploadArtifact(filepath string, data io.Reader, size int64) (string, error)
 	UploadLog(filepath string, data io.Reader, size int64) (string, error)
 	DownloadBlob(filepath string) (io.Reader, error)
 }
@@ -37,8 +37,8 @@ func NewMinioStorage(endpoint, accessKey, secretKey, bucket string) (*MinioStora
 	}, nil
 }
 
-func (m MinioStorage) UploadBinary(filepath string, data io.Reader, size int64) (string, error) {
-	objectName := filepath + "/binary"
+func (m MinioStorage) UploadArtifact(filepath string, data io.Reader, size int64) (string, error) {
+	objectName := filepath + "/artifact"
 
 	_, err := m.client.PutObject(
 		context.Background(),
@@ -57,7 +57,7 @@ func (m MinioStorage) UploadBinary(filepath string, data io.Reader, size int64) 
 
 func (m MinioStorage) UploadLog(filepath string, data io.Reader, size int64) (string, error) {
 
-	objectName := filepath + "/logs/" + time.Now().Format(time.RFC3339) + ".txt"
+	objectName := filepath + "/logs/" + time.Now().UTC().Format(time.RFC3339) + ".txt"
 
 	_, err := m.client.PutObject(
 		context.Background(),

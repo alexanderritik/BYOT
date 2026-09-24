@@ -5,92 +5,136 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 )
 
-type Runtime interface {
-	// exitCode is the test binary's own exit code (0 = pass, non-zero = fail).
-	// err is only set for infra-level failures (docker missing, timeout, etc).
-	Run(filename string, timeout int) (output []byte, exitCode int, err error)
-}
-type GoRuntime struct {
-	Image   string // "alpine"
-	Command string // "" (just execute directly)
+type RuntimeSpec struct {
+	Image   string
+	Command string
 }
 
-type NodeRuntime struct {
-	Image   string // "node:18"
-	Command string // "node"
+var runtimes = map[string]RuntimeSpec{
+	"node": {
+		Image:   "node:18-alpine",
+		Command: "node ./artifact",
+	},
+	"go": {
+		Image:   "golang:1.24-alpine",
+		Command: "./artifact",
+	},
+	"python": {
+		Image:   "python:3.12-alpine",
+		Command: "python ./artifact",
+	},
+	"k6": {
+		Image:   "grafana/k6:latest",
+		Command: "k6 run ./artifact",
+	},
 }
 
-func dockerRun(image, command, filename string, timeout int) ([]byte, int, error) {
-	args := []string{"run", "--rm", "-v", "/tmp/" + filename + ":/app/binary", image}
-	if command != "" {
-		args = append(args, command)
+func GetRuntime(name string) (RuntimeSpec, bool) {
+	spec, ok := runtimes[name]
+	return spec, ok
+}
+
+type Result struct {
+	Output   []byte
+	ExitCode int
+}
+
+func Execute(
+	workspace string,
+	spec RuntimeSpec,
+	timeout time.Duration,
+) (Result, error) {
+	command := strings.ReplaceAll(spec.Command, "./binary", "./artifact")
+
+	args := []string{
+		"run",
+		"--rm",
+		"--network=none",
+		"--memory=512m",
+		"--cpus=1",
+		"--pids-limit=128",
+		"-v",
+		fmt.Sprintf("%s:/app", workspace),
+		"-w",
+		"/app",
+		spec.Image,
+		"sh",
+		"-c",
+		command,
 	}
-	args = append(args, "/app/binary")
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	var wg sync.WaitGroup
-	var buf bytes.Buffer
-	var mu sync.Mutex
 	cmd := exec.CommandContext(ctx, "docker", args...)
 
-	stdoutPipe, _ := cmd.StdoutPipe()
-	stderrPipe, _ := cmd.StderrPipe()
-	cmd.Start()
-	wg.Add(1)
-	go func() {
-		defer wg.Done() // "I'm done"
-		scanner := bufio.NewScanner(stderrPipe)
-		for scanner.Scan() {
-			mu.Lock()
-			buf.WriteString(time.Now().Format(time.RFC3339) + " [stderr] " + scanner.Text() + "\n")
-			mu.Unlock()
-		}
-	}()
-
-	scanner := bufio.NewScanner(stdoutPipe)
-	for scanner.Scan() {
-		line := scanner.Text()
-		mu.Lock()
-		buf.WriteString(time.Now().Format(time.RFC3339) + " [stdout] " + line + "\n")
-		mu.Unlock()
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return Result{ExitCode: -1}, fmt.Errorf("create stdout pipe: %w", err)
 	}
 
-	// Wait for process to finish
-	wg.Wait()
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return Result{ExitCode: -1}, fmt.Errorf("create stderr pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return Result{ExitCode: -1}, fmt.Errorf("start docker: %w", err)
+	}
+
+	var (
+		buf bytes.Buffer
+		mu  sync.Mutex
+		wg  sync.WaitGroup
+	)
+
+	readOutput := func(r *bufio.Scanner, stream string) {
+		defer wg.Done()
+		for r.Scan() {
+			mu.Lock()
+			fmt.Fprintf(
+				&buf,
+				"%s [%s] %s\n",
+				time.Now().UTC().Format(time.RFC3339),
+				stream,
+				r.Text(),
+			)
+			mu.Unlock()
+		}
+	}
+
+	wg.Add(2)
+	go readOutput(bufio.NewScanner(stdout), "stdout")
+	go readOutput(bufio.NewScanner(stderr), "stderr")
+
 	waitErr := cmd.Wait()
+	wg.Wait()
+
+	result := Result{Output: buf.Bytes()}
+
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		result.ExitCode = -1
+		return result, fmt.Errorf("execution timed out after %s", timeout)
+	}
 
 	var exitErr *exec.ExitError
 	if errors.As(waitErr, &exitErr) {
-		// Non-zero exit is the test binary failing, not an infra error.
-		return buf.Bytes(), exitErr.ExitCode(), nil
+		result.ExitCode = exitErr.ExitCode()
+		return result, nil
 	}
+
 	if waitErr != nil {
-		return buf.Bytes(), -1, waitErr
+		result.ExitCode = -1
+		return result, fmt.Errorf("docker execution failed: %w", waitErr)
 	}
 
-	return buf.Bytes(), 0, nil
-}
-
-func (g GoRuntime) Run(filename string, timeout int) ([]byte, int, error) {
-	return dockerRun(g.Image, g.Command, filename, timeout)
-}
-func (g NodeRuntime) Run(filename string, timeout int) ([]byte, int, error) {
-	return dockerRun(g.Image, g.Command, filename, timeout)
-}
-
-func GetRuntime(runtime string) Runtime {
-	switch runtime {
-	case "go":
-		return GoRuntime{Image: "alpine", Command: ""}
-	case "node":
-		return NodeRuntime{}
-	default:
-		return nil
-	}
+	result.ExitCode = 0
+	return result, nil
 }

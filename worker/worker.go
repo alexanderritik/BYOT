@@ -3,8 +3,10 @@ package worker
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/alexanderritik/mini-lambda/model"
@@ -17,21 +19,21 @@ import (
 )
 
 type Worker struct {
-	workerID    string
-	queue       *queue.Queue
-	testRepo    repository.TestRepository
-	testRunRepo repository.TestRunRepository
-	storage     storage.Storage
+	workerID     string
+	queue        *queue.Queue
+	testRepo     repository.TestRepository
+	testRunRepo  repository.TestRunRepository
+	storage      storage.Storage
 	pollInterval time.Duration
 }
 
 func NewWorker(workerID string, q *queue.Queue, testRepo repository.TestRepository, testRunRepo repository.TestRunRepository, storage storage.Storage) *Worker {
 	return &Worker{
-		workerID:    workerID,
-		queue:       q,
-		testRepo:    testRepo,
-		testRunRepo: testRunRepo,
-		storage:     storage,
+		workerID:     workerID,
+		queue:        q,
+		testRepo:     testRepo,
+		testRunRepo:  testRunRepo,
+		storage:      storage,
 		pollInterval: 5 * time.Second,
 	}
 }
@@ -61,13 +63,11 @@ func (w *Worker) processNextJob(ctx context.Context) {
 	}
 
 	if job == nil {
-		// No jobs available
 		return
 	}
 
 	log.Info().Str("worker_id", w.workerID).Str("job_id", job.UUID).Str("test_id", job.TestID).Msg("processing job")
 
-	// Execute the job
 	if err := w.executeJob(ctx, job); err != nil {
 		log.Error().Err(err).Str("worker_id", w.workerID).Str("job_id", job.UUID).Msg("job execution failed")
 		errorMsg := err.Error()
@@ -78,21 +78,29 @@ func (w *Worker) processNextJob(ctx context.Context) {
 }
 
 func (w *Worker) executeJob(ctx context.Context, job *model.Job) error {
-	// Get test details
 	test, err := w.testRepo.GetByID(ctx, job.TestID)
 	if err != nil {
 		return err
 	}
 
-	// Download binary from MinIO
-	reader, err := w.storage.DownloadBlob(test.UUID + "/binary")
+	artifactKey := test.ArtifactKey
+	if artifactKey == "" {
+		artifactKey = test.UUID + "/artifact"
+	}
+
+	reader, err := w.storage.DownloadBlob(artifactKey)
 	if err != nil {
 		return err
 	}
 
-	// Save to /tmp
-	tmpPath := "/tmp/" + test.UUID
-	dst, err := os.Create(tmpPath)
+	workspace, err := os.MkdirTemp("/tmp", "run-"+test.UUID+"-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(workspace)
+
+	artifactPath := filepath.Join(workspace, "artifact")
+	dst, err := os.OpenFile(artifactPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
 	if err != nil {
 		return err
 	}
@@ -100,53 +108,66 @@ func (w *Worker) executeJob(ctx context.Context, job *model.Job) error {
 		dst.Close()
 		return err
 	}
-	dst.Close()
-
-	// Make executable + cleanup after
-	os.Chmod(tmpPath, 0755)
-	defer os.Remove(tmpPath)
-
-	// Get runtime
-	rt := runtime.GetRuntime(test.Runtime)
-	if rt == nil {
+	if err := dst.Close(); err != nil {
 		return err
 	}
 
-	// Execute
-	start := time.Now()
-	output, exitCode, err := rt.Run(test.UUID, test.TimeoutSeconds)
-	duration := time.Since(start)
+	baseSpec, ok := runtime.GetRuntime(test.Runtime)
+	if !ok {
+		return fmt.Errorf("unsupported runtime: %s", test.Runtime)
+	}
 
-	// Determine status
+	command := test.Command
+	if command == "" {
+		command = baseSpec.Command
+	}
+	spec := runtime.RuntimeSpec{
+		Image:   baseSpec.Image,
+		Command: command,
+	}
+
+	timeout := time.Duration(test.TimeoutSeconds) * time.Second
+	if test.TimeoutSeconds <= 0 {
+		timeout = 30 * time.Second
+	}
+
+	startedAt := time.Now().UTC()
+	result, execErr := runtime.Execute(workspace, spec, timeout)
+	finishedAt := time.Now().UTC()
+	duration := finishedAt.Sub(startedAt)
+
 	status := "pass"
-	if exitCode != 0 {
+	if result.ExitCode != 0 || execErr != nil {
 		status = "fail"
 	}
 
-	// Upload logs to MinIO
-	logReader := bytes.NewReader(output)
-	logUrl, err := w.storage.UploadLog(test.UUID, logReader, int64(len(output)))
-	if err != nil {
-		log.Error().Err(err).Msg("failed to upload logs")
+	logReader := bytes.NewReader(result.Output)
+	logURL, uploadErr := w.storage.UploadLog(test.UUID, logReader, int64(len(result.Output)))
+	if uploadErr != nil {
+		log.Error().Err(uploadErr).Msg("failed to upload logs")
 	}
 
-	// Create TestRun
 	testRun := &model.TestRun{
 		UUID:         uuid.NewString(),
 		TestID:       test.UUID,
-		StartedAt:    start,
+		StartedAt:    startedAt,
 		DurationMs:   duration.Milliseconds(),
-		LogURL:       logUrl,
-		FinishedAt:   time.Now(),
+		LogURL:       logURL,
+		FinishedAt:   finishedAt,
 		Status:       status,
-		LogSizeBytes: int64(len(output)),
+		LogSizeBytes: int64(len(result.Output)),
 	}
 
 	if err := w.testRunRepo.Create(ctx, testRun); err != nil {
 		return err
 	}
 
-	log.Info().Str("worker_id", w.workerID).Str("job_id", job.UUID).Str("status", status).Int64("duration_ms", duration.Milliseconds()).Msg("job execution completed")
+	log.Info().
+		Str("worker_id", w.workerID).
+		Str("job_id", job.UUID).
+		Str("status", status).
+		Int64("duration_ms", duration.Milliseconds()).
+		Msg("job execution completed")
 
-	return nil
+	return execErr
 }
