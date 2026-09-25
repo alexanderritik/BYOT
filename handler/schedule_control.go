@@ -33,12 +33,15 @@ func (hl *Handler) enableSchedule(w http.ResponseWriter, r *http.Request, testID
 	}
 
 	cfg := repository.TestConfigUpdate{
-		Command:         test.Command,
-		Severity:        test.Severity,
-		TimeoutSeconds:  test.TimeoutSeconds,
-		ScheduleCron:    test.ScheduleCron,
-		ScheduleEnabled: true,
-		NextRunAt:       &next,
+		Command:          test.Command,
+		Severity:         test.Severity,
+		TimeoutSeconds:   test.TimeoutSeconds,
+		ScheduleCron:     test.ScheduleCron,
+		ScheduleEnabled:  true,
+		NextRunAt:        &next,
+		WebhookURL:       test.WebhookURL,
+		FailureThreshold: test.FailureThreshold,
+		AlertsEnabled:    test.AlertsEnabled,
 	}
 	if err := hl.test.UpdateConfig(r.Context(), testID, cfg); err != nil {
 		jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": "failed to enable schedule"})
@@ -66,12 +69,15 @@ func (hl *Handler) disableSchedule(w http.ResponseWriter, r *http.Request, testI
 	}
 
 	cfg := repository.TestConfigUpdate{
-		Command:         test.Command,
-		Severity:        test.Severity,
-		TimeoutSeconds:  test.TimeoutSeconds,
-		ScheduleCron:    test.ScheduleCron,
-		ScheduleEnabled: false,
-		NextRunAt:       nil,
+		Command:          test.Command,
+		Severity:         test.Severity,
+		TimeoutSeconds:   test.TimeoutSeconds,
+		ScheduleCron:     test.ScheduleCron,
+		ScheduleEnabled:  false,
+		NextRunAt:        nil,
+		WebhookURL:       test.WebhookURL,
+		FailureThreshold: test.FailureThreshold,
+		AlertsEnabled:    test.AlertsEnabled,
 	}
 	if err := hl.test.UpdateConfig(r.Context(), testID, cfg); err != nil {
 		jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": "failed to disable schedule"})

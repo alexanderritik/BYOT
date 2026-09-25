@@ -1,0 +1,4 @@
+ALTER TABLE tests ADD COLUMN webhook_url TEXT;
+ALTER TABLE tests ADD COLUMN failure_threshold INT NOT NULL DEFAULT 3;
+ALTER TABLE tests ADD COLUMN consecutive_failures INT NOT NULL DEFAULT 0;
+ALTER TABLE tests ADD COLUMN alert_active BOOLEAN NOT NULL DEFAULT false;

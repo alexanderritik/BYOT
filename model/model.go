@@ -15,8 +15,24 @@ type Test struct {
 	TimeoutSeconds   int        `db:"timeout_seconds" json:"timeout_seconds"`
 	ScheduleCron     string     `db:"schedule_cron" json:"schedule_cron"`
 	ScheduleEnabled  bool       `db:"schedule_enabled" json:"schedule_enabled"`
-	NextRunAt        *time.Time `db:"next_run_at" json:"next_run_at"`
-	CreatedAt        time.Time  `db:"created_at" json:"created_at"`
+	NextRunAt            *time.Time `db:"next_run_at" json:"next_run_at"`
+	WebhookURL           string     `db:"webhook_url" json:"webhook_url"`
+	FailureThreshold     int        `db:"failure_threshold" json:"failure_threshold"`
+	ConsecutiveFailures  int        `db:"consecutive_failures" json:"consecutive_failures"`
+	AlertActive          bool       `db:"alert_active" json:"alert_active"`
+	AlertsEnabled        bool       `db:"alerts_enabled" json:"alerts_enabled"`
+	CreatedAt            time.Time  `db:"created_at" json:"created_at"`
+}
+
+// RunOutcomeAlert describes webhook notifications to send after a run completes.
+type RunOutcomeAlert struct {
+	SendFailure  bool
+	SendRecovery bool
+	WebhookURL   string
+	TestName     string
+	Severity     string
+	Consecutive  int
+	Threshold    int
 }
 
 type TestRun struct {

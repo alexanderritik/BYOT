@@ -4,17 +4,22 @@ import (
 	"context"
 	"time"
 
+	"github.com/alexanderritik/mini-lambda/alert"
 	"github.com/alexanderritik/mini-lambda/model"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type TestConfigUpdate struct {
-	Command         string
-	Severity        string
-	TimeoutSeconds  int
-	ScheduleCron    string
-	ScheduleEnabled bool
-	NextRunAt       *time.Time
+	Command          string
+	Severity         string
+	TimeoutSeconds   int
+	ScheduleCron     string
+	ScheduleEnabled  bool
+	NextRunAt        *time.Time
+	WebhookURL       string
+	FailureThreshold int
+	AlertsEnabled    bool
 }
 
 type TestRepository interface {
@@ -24,6 +29,8 @@ type TestRepository interface {
 	UpdateConfig(ctx context.Context, testID string, cfg TestConfigUpdate) error
 	ListDueScheduled(ctx context.Context, now time.Time) ([]*model.Test, error)
 	UpdateNextRunAt(ctx context.Context, testID string, next time.Time) error
+	RecordRunOutcome(ctx context.Context, testID string, passed bool) (*model.RunOutcomeAlert, error)
+	Delete(ctx context.Context, testID string) error
 }
 
 type postgresTestRepository struct {
@@ -38,8 +45,8 @@ func (r *postgresTestRepository) Create(ctx context.Context, test *model.Test) e
 	_, err := r.pool.Exec(ctx,
 		`INSERT INTO tests (
 			uuid, name, runtime, original_filename, severity, command, artifact_key, timeout_seconds,
-			schedule_cron, schedule_enabled, next_run_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+			schedule_cron, schedule_enabled, next_run_at, webhook_url, failure_threshold, alerts_enabled
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
 		test.UUID,
 		test.Name,
 		test.Runtime,
@@ -51,8 +58,18 @@ func (r *postgresTestRepository) Create(ctx context.Context, test *model.Test) e
 		nullIfEmpty(test.ScheduleCron),
 		test.ScheduleEnabled,
 		test.NextRunAt,
+		nullIfEmpty(test.WebhookURL),
+		normalizeFailureThreshold(test.FailureThreshold),
+		test.AlertsEnabled,
 	)
 	return err
+}
+
+func normalizeFailureThreshold(n int) int {
+	if n <= 0 {
+		return 3
+	}
+	return n
 }
 
 func nullIfEmpty(s string) interface{} {
@@ -67,7 +84,8 @@ func (r *postgresTestRepository) GetByID(ctx context.Context, uuid string) (*mod
 	err := r.pool.QueryRow(ctx,
 		`SELECT uuid::text, COALESCE(name, ''), runtime, original_filename, severity,
 		        COALESCE(command, ''), COALESCE(artifact_key, ''), created_at, timeout_seconds,
-		        COALESCE(schedule_cron, ''), schedule_enabled, next_run_at
+		        COALESCE(schedule_cron, ''), schedule_enabled, next_run_at,
+		        COALESCE(webhook_url, ''), failure_threshold, consecutive_failures, alert_active, alerts_enabled
 		 FROM tests WHERE uuid = $1`,
 		uuid,
 	).Scan(
@@ -83,6 +101,11 @@ func (r *postgresTestRepository) GetByID(ctx context.Context, uuid string) (*mod
 		&test.ScheduleCron,
 		&test.ScheduleEnabled,
 		&test.NextRunAt,
+		&test.WebhookURL,
+		&test.FailureThreshold,
+		&test.ConsecutiveFailures,
+		&test.AlertActive,
+		&test.AlertsEnabled,
 	)
 	if err != nil {
 		return nil, err
@@ -95,6 +118,7 @@ func (r *postgresTestRepository) ListWithLastRun(ctx context.Context) ([]model.T
 		`SELECT t.uuid::text, COALESCE(t.name, ''), t.runtime, t.original_filename, t.severity,
 		        COALESCE(t.command, ''), COALESCE(t.artifact_key, ''), t.created_at, t.timeout_seconds,
 		        COALESCE(t.schedule_cron, ''), t.schedule_enabled, t.next_run_at,
+		        COALESCE(t.webhook_url, ''), t.failure_threshold, t.consecutive_failures, t.alert_active, t.alerts_enabled,
 		        lr.status, lr.started_at, lr.duration_ms,
 		        EXISTS (
 		          SELECT 1 FROM jobs j
@@ -135,6 +159,11 @@ func (r *postgresTestRepository) ListWithLastRun(ctx context.Context) ([]model.T
 			&test.ScheduleCron,
 			&test.ScheduleEnabled,
 			&test.NextRunAt,
+			&test.WebhookURL,
+			&test.FailureThreshold,
+			&test.ConsecutiveFailures,
+			&test.AlertActive,
+			&test.AlertsEnabled,
 			&lastStatus,
 			&lastStarted,
 			&lastDuration,
@@ -163,14 +192,20 @@ func (r *postgresTestRepository) UpdateConfig(ctx context.Context, testID string
 			timeout_seconds = $3,
 			schedule_cron = $4,
 			schedule_enabled = $5,
-			next_run_at = $6
-		 WHERE uuid = $7`,
+			next_run_at = $6,
+			webhook_url = $7,
+			failure_threshold = $8,
+			alerts_enabled = $9
+		 WHERE uuid = $10`,
 		cfg.Command,
 		cfg.Severity,
 		cfg.TimeoutSeconds,
 		nullIfEmpty(cfg.ScheduleCron),
 		cfg.ScheduleEnabled,
 		cfg.NextRunAt,
+		nullIfEmpty(cfg.WebhookURL),
+		normalizeFailureThreshold(cfg.FailureThreshold),
+		cfg.AlertsEnabled,
 		testID,
 	)
 	return err
@@ -180,7 +215,8 @@ func (r *postgresTestRepository) ListDueScheduled(ctx context.Context, now time.
 	rows, err := r.pool.Query(ctx,
 		`SELECT uuid::text, COALESCE(name, ''), runtime, original_filename, severity,
 		        COALESCE(command, ''), COALESCE(artifact_key, ''), created_at, timeout_seconds,
-		        COALESCE(schedule_cron, ''), schedule_enabled, next_run_at
+		        COALESCE(schedule_cron, ''), schedule_enabled, next_run_at,
+		        COALESCE(webhook_url, ''), failure_threshold, consecutive_failures, alert_active
 		 FROM tests
 		 WHERE schedule_enabled = true
 		   AND schedule_cron IS NOT NULL
@@ -211,12 +247,100 @@ func (r *postgresTestRepository) ListDueScheduled(ctx context.Context, now time.
 			&test.ScheduleCron,
 			&test.ScheduleEnabled,
 			&test.NextRunAt,
+			&test.WebhookURL,
+			&test.FailureThreshold,
+			&test.ConsecutiveFailures,
+			&test.AlertActive,
 		); err != nil {
 			return nil, err
 		}
 		out = append(out, &test)
 	}
 	return out, rows.Err()
+}
+
+func (r *postgresTestRepository) RecordRunOutcome(ctx context.Context, testID string, passed bool) (*model.RunOutcomeAlert, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	var name, severity, webhook string
+	var threshold, consecutive int
+	var alertActive, alertsEnabled bool
+	err = tx.QueryRow(ctx,
+		`SELECT COALESCE(name, ''), severity, COALESCE(webhook_url, ''), failure_threshold,
+		        consecutive_failures, alert_active, alerts_enabled
+		 FROM tests WHERE uuid = $1 FOR UPDATE`,
+		testID,
+	).Scan(&name, &severity, &webhook, &threshold, &consecutive, &alertActive, &alertsEnabled)
+	if err != nil {
+		return nil, err
+	}
+
+	out := &model.RunOutcomeAlert{
+		WebhookURL: webhook,
+		TestName:   name,
+		Severity:   severity,
+		Threshold:  threshold,
+	}
+
+	threshold = normalizeFailureThreshold(threshold)
+
+	if passed {
+		if alertActive && webhook != "" && alertsEnabled {
+			out.SendRecovery = true
+		}
+		consecutive = 0
+		alertActive = false
+	} else {
+		consecutive++
+		out.Consecutive = consecutive
+		alertActive = consecutive >= threshold
+		if webhook != "" && alertsEnabled && alert.FailureAlertDue(consecutive, threshold) {
+			out.SendFailure = true
+		}
+	}
+
+	_, err = tx.Exec(ctx,
+		`UPDATE tests SET consecutive_failures = $1, alert_active = $2 WHERE uuid = $3`,
+		consecutive, alertActive, testID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
+	if !out.SendFailure && !out.SendRecovery {
+		return nil, nil
+	}
+	return out, nil
+}
+
+func (r *postgresTestRepository) Delete(ctx context.Context, testID string) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, `DELETE FROM tests_runs WHERE test_id = $1`, testID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM jobs WHERE test_id = $1`, testID); err != nil {
+		return err
+	}
+	tag, err := tx.Exec(ctx, `DELETE FROM tests WHERE uuid = $1`, testID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return tx.Commit(ctx)
 }
 
 func (r *postgresTestRepository) UpdateNextRunAt(ctx context.Context, testID string, next time.Time) error {

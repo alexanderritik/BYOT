@@ -14,6 +14,8 @@ type Storage interface {
 	UploadArtifact(filepath string, data io.Reader, size int64) (string, error)
 	UploadLog(filepath string, data io.Reader, size int64) (string, error)
 	DownloadBlob(filepath string) (io.Reader, error)
+	DeletePrefix(prefix string) error
+	DeleteObject(objectName string) error
 }
 
 type MinioStorage struct {
@@ -87,4 +89,28 @@ func (m MinioStorage) DownloadBlob(objectName string) (io.Reader, error) {
 	}
 
 	return object, nil
+}
+
+func (m MinioStorage) DeletePrefix(prefix string) error {
+	ctx := context.Background()
+	for object := range m.client.ListObjects(ctx, m.bucketName, minio.ListObjectsOptions{
+		Prefix:    prefix,
+		Recursive: true,
+	}) {
+		if object.Err != nil {
+			return object.Err
+		}
+		if err := m.client.RemoveObject(ctx, m.bucketName, object.Key, minio.RemoveObjectOptions{}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m MinioStorage) DeleteObject(objectName string) error {
+	if objectName == "" {
+		return nil
+	}
+	ctx := context.Background()
+	return m.client.RemoveObject(ctx, m.bucketName, objectName, minio.RemoveObjectOptions{})
 }

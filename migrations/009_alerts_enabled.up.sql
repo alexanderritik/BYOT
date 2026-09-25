@@ -1,0 +1,1 @@
+ALTER TABLE tests ADD COLUMN alerts_enabled BOOLEAN NOT NULL DEFAULT true;

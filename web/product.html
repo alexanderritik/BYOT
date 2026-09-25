@@ -117,6 +117,12 @@ tbody tr.clickable:hover{background:var(--surface-2);}
 .btn-danger{color:var(--danger);border-color:transparent;background:var(--danger-soft);}
 .btn-danger:hover{filter:brightness(1.06);}
 .btn-row{display:flex;gap:.35rem;justify-content:flex-end;flex-wrap:wrap;}
+.modal-overlay{position:fixed;inset:0;background:rgba(8,12,10,0.55);display:flex;align-items:center;justify-content:center;padding:1.5rem;z-index:1000;}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);max-width:420px;width:100%;padding:1.35rem 1.5rem;}
+.modal h2{margin:0 0 .5rem;font-size:1.1rem;}
+.modal p{margin:0 0 1rem;color:var(--text-muted);font-size:.86rem;line-height:1.5;}
+.modal .field{margin-bottom:1rem;}
+.modal-actions{display:flex;gap:.5rem;justify-content:flex-end;flex-wrap:wrap;}
 .btn-icon{min-width:5.5rem;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:.75rem;letter-spacing:.02em;}
 .btn-play.btn-accent{box-shadow:0 0 0 1px var(--accent-soft);}
 .btn-stop.btn-danger{font-weight:700;}
@@ -216,6 +222,19 @@ function scheduleLabel(test){
   return test.schedule_enabled ? `${test.schedule_cron} · on` : `${test.schedule_cron} · paused`;
 }
 
+function alertLabel(test){
+  if (!test.webhook_url) return '—';
+  if (test.alerts_enabled === false) return 'paused';
+  const th = test.failure_threshold || 3;
+  if (test.alert_active) return `<span class="status fail"><span class="status-dot"></span>firing</span>`;
+  if (test.consecutive_failures > 0) return `${test.consecutive_failures} consecutive`;
+  return 'webhook ✓';
+}
+
+function alertsConfiguredCount(){
+  return testList.filter(x=>x.test.webhook_url).length;
+}
+
 function testByUUID(uuid){
   return (testList || []).find(x=>x?.test?.uuid===uuid)?.test;
 }
@@ -307,6 +326,7 @@ function actionButtons(uuid, sizeClass){
   return `<div class="btn-row" onclick="event.stopPropagation()">
     <button type="button" class="btn ${sm} btn-accent" onclick="runNow('${uuid}')">Run now</button>
     ${scheduleButton(uuid, sm)}
+    <button type="button" class="btn ${sm} btn-danger" onclick="openDeleteModal('${uuid}')">Delete</button>
   </div>`;
 }
 
@@ -378,7 +398,7 @@ async function renderDashboard(){
       <td>${sevPill(t.severity)}</td>
       <td class="mono">${esc(sched)}${next ? `<div class="tid">next ${esc(next)}</div>` : ''}</td>
       <td>${lr ? `${timeAgo(lr.started_at)}<div class="tid">${lr.duration_ms} ms</div>` : '—'}</td>
-      <td class="tid">—</td>
+      <td class="tid">${alertLabel(t)}</td>
       <td style="text-align:right">${actionButtons(t.uuid)}</td>
     </tr>`;
   }).join('') || `<tr><td colspan="8" class="empty">No tests yet — upload your first binary.</td></tr>`;
@@ -395,7 +415,7 @@ async function renderDashboard(){
       <div class="stat"><div class="stat-n">${total}</div><div class="stat-l">monitors</div></div>
       <div class="stat ok"><div class="stat-n">${passing}</div><div class="stat-l">passing</div></div>
       <div class="stat bad"><div class="stat-n">${failing}</div><div class="stat-l">failing</div></div>
-      <div class="stat warn"><div class="stat-n">0</div><div class="stat-l">alerts (coming soon)</div></div>
+      <div class="stat warn"><div class="stat-n">${alertsConfiguredCount()}</div><div class="stat-l">webhooks configured</div></div>
     </div>
     <div class="panel"><div class="twrap"><table>
       <thead><tr><th>Status</th><th>Test</th><th>Runtime</th><th>Severity</th><th>Schedule</th><th>Last run</th><th>Alerts</th><th></th></tr></thead>
@@ -421,6 +441,18 @@ async function renderTestDetail(id){
     </tr>`).join('') || `<tr><td colspan="4" class="empty">No runs yet — hit Run now or wait for the schedule.</td></tr>`;
 
   const cmd = t.command ? esc(t.command) : '<span class="tid">runtime default</span>';
+  const th = t.failure_threshold || 3;
+  const alertsOn = t.alerts_enabled !== false;
+  const nextFire = t.consecutive_failures > 0
+    ? (Math.floor(t.consecutive_failures / th) + 1) * th
+    : th;
+  const alertState = !alertsOn
+    ? 'Webhooks paused (failure streak still tracked)'
+    : t.consecutive_failures === 0
+      ? `Active · first alert after ${th} consecutive failures, then every ${th}`
+      : t.consecutive_failures >= th
+        ? `${t.consecutive_failures} consecutive · next webhook at ${nextFire} failures`
+        : `${t.consecutive_failures}/${th} toward first webhook`;
 
   document.getElementById('main').innerHTML = `
     <div class="crumbs"><button onclick="go('dashboard')">Dashboard</button><span class="sep">/</span><span class="cur">${esc(t.name)}</span></div>
@@ -438,8 +470,35 @@ async function renderTestDetail(id){
         <div><span class="kv-k">Cron enabled</span><span class="kv-v">${t.schedule_enabled ? 'yes' : 'no'}</span></div>
         <div><span class="kv-k">Command</span><span class="kv-v">${cmd}</span></div>
         <div><span class="kv-k">Timeout</span><span class="kv-v">${t.timeout_seconds}s</span></div>
+        <div><span class="kv-k">Alert state</span><span class="kv-v">${esc(alertState)}</span></div>
       </div>
     </div>
+    <div class="section-title">Alerts</div>
+    <form class="panel" style="padding:1.25rem 1.5rem" onsubmit="saveAlerts(event,'${id}')">
+      <div class="form-grid">
+        <div class="field full">
+          <label for="webhook-url">Slack / webhook URL</label>
+          <input id="webhook-url" type="url" placeholder="https://hooks.slack.com/services/…" value="${esc(t.webhook_url||'')}">
+          <span class="hint">Slack incoming webhook or any URL that accepts JSON <code>{"text":"…"}</code>.</span>
+        </div>
+        <div class="field">
+          <label for="fail-th">Consecutive failures before alert</label>
+          <input id="fail-th" type="number" min="1" value="${th}">
+          <span class="hint">Webhook at ${th}, ${th*2}, ${th*3}… consecutive failures (recovery on pass).</span>
+        </div>
+        <div class="field full">
+          <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-weight:500">
+            <input type="checkbox" id="alerts-enabled" ${alertsOn ? 'checked' : ''} style="width:auto">
+            Send webhook alerts
+          </label>
+          <span class="hint">Turn off to pause delivery without losing the failure counter.</span>
+        </div>
+      </div>
+      <div style="margin-top:1rem;display:flex;gap:.6rem;flex-wrap:wrap">
+        <button type="submit" class="btn btn-accent">Save alert settings</button>
+        <button type="button" class="btn ${alertsOn ? 'btn-ghost' : 'btn-accent'}" onclick="toggleAlertsPause('${id}', ${alertsOn})">${alertsOn ? 'Pause webhooks now' : 'Resume webhooks'}</button>
+      </div>
+    </form>
     <div class="section-title">Run history</div>
     <div class="panel"><div class="twrap"><table>
       <thead><tr><th>Status</th><th>Started</th><th>Duration</th><th>Log size</th></tr></thead>
@@ -532,6 +591,15 @@ function renderUpload(){
             <span class="chip" onclick="document.getElementById('cron').value='0 * * * *'">hourly</span>
           </div>
         </div>
+        <div class="field full">
+          <label for="webhook">Slack / webhook URL (optional)</label>
+          <input id="webhook" type="url" placeholder="https://hooks.slack.com/services/…">
+        </div>
+        <div class="field">
+          <label for="fail-th-upload">Failures before alert</label>
+          <input id="fail-th-upload" type="number" min="1" value="3">
+          <span class="hint">Alert on the 3rd consecutive failure by default.</span>
+        </div>
       </div>
       <div style="margin-top:1.5rem;display:flex;gap:.6rem">
         <button type="submit" class="btn btn-accent" id="upload-btn">Upload &amp; create monitor</button>
@@ -560,6 +628,9 @@ async function submitUpload(e){
   if (cmd) fd.append('command', cmd);
   const cron = document.getElementById('cron').value.trim();
   if (cron) fd.append('cron', cron);
+  const webhook = document.getElementById('webhook').value.trim();
+  if (webhook) fd.append('webhook_url', webhook);
+  fd.append('failure_threshold', document.getElementById('fail-th-upload').value);
   try {
     const res = await apiJson('/uploadBinary', { method: 'POST', body: fd });
     toast(`<strong>${esc(displayName)}</strong> uploaded`);
@@ -567,6 +638,106 @@ async function submitUpload(e){
   } catch (err) {
     toast(esc(err.message));
     btn.disabled = false;
+  }
+}
+
+async function saveAlerts(e, testId){
+  e.preventDefault();
+  const webhook = document.getElementById('webhook-url').value.trim();
+  const th = parseInt(document.getElementById('fail-th').value, 10);
+  const alertsEnabled = document.getElementById('alerts-enabled').checked;
+  if (!th || th < 1){ toast('Failure threshold must be at least 1'); return; }
+  try {
+    await apiJson('/tests/' + testId + '/config', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        webhook_url: webhook,
+        failure_threshold: th,
+        alerts_enabled: alertsEnabled,
+      }),
+    });
+    toast('Alert settings saved');
+    await renderTestDetail(testId);
+  } catch (err) {
+    toast(esc(err.message));
+  }
+}
+
+async function toggleAlertsPause(testId, currentlyEnabled){
+  try {
+    await apiJson('/tests/' + testId + '/config', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ alerts_enabled: !currentlyEnabled }),
+    });
+    toast(currentlyEnabled ? 'Webhook alerts paused' : 'Webhook alerts resumed');
+    await renderTestDetail(testId);
+  } catch (err) {
+    toast(esc(err.message));
+  }
+}
+
+function closeDeleteModal(){
+  document.getElementById('delete-modal-root')?.remove();
+}
+
+function openDeleteModal(testId){
+  closeDeleteModal();
+  const item = testList.find(x=>x.test.uuid===testId);
+  const name = item?.test?.name || testId;
+  const root = document.createElement('div');
+  root.id = 'delete-modal-root';
+  root.className = 'modal-overlay';
+  root.innerHTML = `
+    <div class="modal" role="dialog" aria-labelledby="delete-modal-title" onclick="event.stopPropagation()">
+      <h2 id="delete-modal-title">Delete monitor?</h2>
+      <p>This removes <strong>${esc(name)}</strong>, its uploaded artifact, all run logs in storage, and job history. This cannot be undone.</p>
+      <div class="field">
+        <label for="delete-confirm-input">Type <span class="mono">delete</span> to confirm</label>
+        <input id="delete-confirm-input" type="text" autocomplete="off" placeholder="delete">
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeDeleteModal()">Cancel</button>
+        <button type="button" class="btn btn-danger" id="delete-confirm-btn" disabled onclick="confirmDeleteMonitor('${testId}')">Delete permanently</button>
+      </div>
+    </div>`;
+  root.addEventListener('click', closeDeleteModal);
+  document.body.appendChild(root);
+  const input = document.getElementById('delete-confirm-input');
+  const btn = document.getElementById('delete-confirm-btn');
+  input.focus();
+  input.addEventListener('input', ()=>{
+    btn.disabled = input.value.trim() !== 'delete';
+  });
+  input.addEventListener('keydown', e=>{
+    if (e.key === 'Enter' && !btn.disabled) confirmDeleteMonitor(testId);
+    if (e.key === 'Escape') closeDeleteModal();
+  });
+}
+
+async function confirmDeleteMonitor(testId){
+  const input = document.getElementById('delete-confirm-input');
+  if (!input || input.value.trim() !== 'delete') return;
+  const btn = document.getElementById('delete-confirm-btn');
+  if (btn) btn.disabled = true;
+  try {
+    await apiJson('/tests/' + testId, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirm: 'delete' }),
+    });
+    closeDeleteModal();
+    toast('Monitor deleted');
+    if (state.view === 'test' && state.testId === testId) {
+      await go('dashboard');
+    } else {
+      await refreshTests();
+      if (state.view === 'dashboard') await renderDashboard();
+    }
+  } catch (err) {
+    toast(esc(err.message));
+    if (btn) btn.disabled = false;
   }
 }
 

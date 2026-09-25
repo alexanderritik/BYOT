@@ -153,8 +153,13 @@ func (hl *Handler) Tests(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if r.Method == http.MethodDelete {
+		hl.deleteTest(w, r, path)
+		return
+	}
+
 	if r.Method != http.MethodGet {
-		jsonResponse(w, http.StatusMethodNotAllowed, map[string]string{"error": "GET or PATCH /tests/{id}/config only"})
+		jsonResponse(w, http.StatusMethodNotAllowed, map[string]string{"error": "GET, PATCH /tests/{id}/config, or DELETE /tests/{id}"})
 		return
 	}
 
@@ -238,8 +243,11 @@ type UpdateTestConfigRequest struct {
 	Command         *string `json:"command"`
 	Severity        *string `json:"severity"`
 	TimeoutSeconds  *int    `json:"timeout_seconds"`
-	Cron            *string `json:"cron"`
-	ScheduleEnabled *bool   `json:"schedule_enabled"`
+	Cron               *string `json:"cron"`
+	ScheduleEnabled    *bool   `json:"schedule_enabled"`
+	WebhookURL         *string `json:"webhook_url"`
+	FailureThreshold   *int    `json:"failure_threshold"`
+	AlertsEnabled      *bool   `json:"alerts_enabled"`
 }
 
 func (hl *Handler) updateTestConfig(w http.ResponseWriter, r *http.Request, testID string) {
@@ -279,6 +287,22 @@ func (hl *Handler) updateTestConfig(w http.ResponseWriter, r *http.Request, test
 	if req.ScheduleEnabled != nil {
 		test.ScheduleEnabled = *req.ScheduleEnabled
 	}
+	if req.WebhookURL != nil {
+		test.WebhookURL = strings.TrimSpace(*req.WebhookURL)
+	}
+	if req.FailureThreshold != nil {
+		if *req.FailureThreshold <= 0 {
+			jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "failure_threshold must be positive"})
+			return
+		}
+		test.FailureThreshold = *req.FailureThreshold
+	}
+	if req.AlertsEnabled != nil {
+		test.AlertsEnabled = *req.AlertsEnabled
+	}
+	if test.FailureThreshold <= 0 {
+		test.FailureThreshold = 3
+	}
 
 	var nextRun *time.Time
 	if test.ScheduleEnabled {
@@ -298,12 +322,15 @@ func (hl *Handler) updateTestConfig(w http.ResponseWriter, r *http.Request, test
 	}
 
 	cfg := repository.TestConfigUpdate{
-		Command:         test.Command,
-		Severity:        test.Severity,
-		TimeoutSeconds:  test.TimeoutSeconds,
-		ScheduleCron:    test.ScheduleCron,
-		ScheduleEnabled: test.ScheduleEnabled,
-		NextRunAt:       nextRun,
+		Command:          test.Command,
+		Severity:         test.Severity,
+		TimeoutSeconds:   test.TimeoutSeconds,
+		ScheduleCron:     test.ScheduleCron,
+		ScheduleEnabled:  test.ScheduleEnabled,
+		NextRunAt:        nextRun,
+		WebhookURL:       test.WebhookURL,
+		FailureThreshold: test.FailureThreshold,
+		AlertsEnabled:    test.AlertsEnabled,
 	}
 	if err := hl.test.UpdateConfig(r.Context(), testID, cfg); err != nil {
 		jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": "failed to update test config"})
@@ -381,6 +408,16 @@ func (hl *Handler) UploadBinary(h http.ResponseWriter, r *http.Request) {
 	severity := r.FormValue("severity")
 	command := r.FormValue("command")
 	cron := strings.TrimSpace(r.FormValue("cron"))
+	webhookURL := strings.TrimSpace(r.FormValue("webhook_url"))
+	failureThreshold := 3
+	if ft := strings.TrimSpace(r.FormValue("failure_threshold")); ft != "" {
+		v, err := strconv.Atoi(ft)
+		if err != nil || v <= 0 {
+			jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "failure_threshold must be a positive integer"})
+			return
+		}
+		failureThreshold = v
+	}
 	displayName := strings.TrimSpace(r.FormValue("name"))
 	timeoutStr := r.FormValue("timeout")
 	timeout, err := strconv.Atoi(timeoutStr)
@@ -437,6 +474,9 @@ func (hl *Handler) UploadBinary(h http.ResponseWriter, r *http.Request) {
 		Severity:         severity,
 		ArtifactKey:      dst,
 		TimeoutSeconds:   timeout,
+		WebhookURL:       webhookURL,
+		FailureThreshold: failureThreshold,
+		AlertsEnabled:    true,
 	}
 	if cron != "" {
 		next, err := schedule.NextRun(cron, time.Now().UTC())

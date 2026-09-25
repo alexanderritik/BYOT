@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/alexanderritik/mini-lambda/alert"
 	"github.com/alexanderritik/mini-lambda/model"
 	"github.com/alexanderritik/mini-lambda/queue"
 	"github.com/alexanderritik/mini-lambda/repository"
@@ -178,6 +179,33 @@ func (w *Worker) executeJob(ctx context.Context, job *model.Job) error {
 
 	if err := w.testRunRepo.Create(ctx, testRun); err != nil {
 		return err
+	}
+
+	if alertInfo, err := w.testRepo.RecordRunOutcome(ctx, test.UUID, status == "pass"); err != nil {
+		log.Error().Err(err).Str("test_id", test.UUID).Msg("failed to update alert state")
+	} else if alertInfo != nil {
+		payload := alert.Payload{
+			TestID:              test.UUID,
+			TestName:            alertInfo.TestName,
+			Severity:            alertInfo.Severity,
+			ConsecutiveFailures: alertInfo.Consecutive,
+			FailureThreshold:    alertInfo.Threshold,
+			RunID:               testRun.UUID,
+		}
+		if alertInfo.SendFailure {
+			if err := alert.SendFailure(ctx, alertInfo.WebhookURL, payload); err != nil {
+				log.Error().Err(err).Str("test_id", test.UUID).Msg("failure webhook failed")
+			} else {
+				log.Info().Str("test_id", test.UUID).Int("consecutive", alertInfo.Consecutive).Msg("failure alert sent")
+			}
+		}
+		if alertInfo.SendRecovery {
+			if err := alert.SendRecovery(ctx, alertInfo.WebhookURL, payload); err != nil {
+				log.Error().Err(err).Str("test_id", test.UUID).Msg("recovery webhook failed")
+			} else {
+				log.Info().Str("test_id", test.UUID).Msg("recovery alert sent")
+			}
+		}
 	}
 
 	log.Info().

@@ -74,7 +74,7 @@ Verified against repo on **2026-09-25** (`go build ./...` OK):
 | Network policy (registry) | ✅ | `NetworkEnabled`; k6/playwright → `bridge`, go/node → `none` |
 | Logs → MinIO | ✅ | Per run; timestamps UTC in executor |
 | Screenshots / traces | ❌ | UI mock in `product.html` only |
-| Slack / webhook | ❌ | UI mock only |
+| Slack / webhook | ✅ | `webhook_url`, threshold 3 default, Slack JSON POST |
 | Basic dashboard | ⚠️ | Static `product.html` / `index.html`, not wired to API |
 | Network for monitoring tests | ✅ | Per-runtime `NetworkEnabled` in registry |
 
@@ -273,9 +273,10 @@ Schedule: every 15m · Alert: Slack ✓  [ Run now ]
 
 ## P4 — Alerts (minimal)
 
-- [ ] `webhook_url`, `failure_threshold`, consecutive failure counter on test
-- [ ] Fire Slack-compatible webhook when threshold crossed; dedupe repeats
-- [ ] Optional “recovered” message on pass after alert
+- [x] `webhook_url`, `failure_threshold`, consecutive failure counter on test
+- [x] Fire Slack-compatible webhook when threshold crossed; repeats every N consecutive failures
+- [x] Optional “recovered” message on pass after alert
+- [x] Per-test pause (`alerts_enabled`) — no webhooks while paused; streak still tracked
 - [ ] **Not now:** PagerDuty, routing rules, on-call
 
 ---
