@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/alexanderritik/mini-lambda/queue"
 	"github.com/alexanderritik/mini-lambda/repository"
 	"github.com/alexanderritik/mini-lambda/schedule"
+	"github.com/alexanderritik/mini-lambda/scheduler"
 	"github.com/alexanderritik/mini-lambda/storage"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
@@ -23,14 +25,16 @@ type Handler struct {
 	test        repository.TestRepository
 	testRunRepo repository.TestRunRepository
 	queue       *queue.Queue
+	scheduler   *scheduler.Scheduler
 }
 
-func NewHandler(storage storage.Storage, test repository.TestRepository, testRun repository.TestRunRepository, q *queue.Queue) *Handler {
+func NewHandler(storage storage.Storage, test repository.TestRepository, testRun repository.TestRunRepository, q *queue.Queue, sched *scheduler.Scheduler) *Handler {
 	return &Handler{
 		storage:     storage,
 		test:        test,
 		testRunRepo: testRun,
 		queue:       q,
+		scheduler:   sched,
 	}
 }
 
@@ -83,12 +87,58 @@ func (hl *Handler) JobStatus(h http.ResponseWriter, r *http.Request) {
 	jsonResponse(h, http.StatusOK, response)
 }
 
-// Tests routes GET /tests/{id} and PATCH /tests/{id}/config.
+// Tests routes GET /tests, GET /tests/{id}, GET /tests/{id}/runs, PATCH /tests/{id}/config.
 func (hl *Handler) Tests(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/tests" || r.URL.Path == "/tests/" {
+		if r.Method != http.MethodGet {
+			jsonResponse(w, http.StatusMethodNotAllowed, map[string]string{"error": "GET only"})
+			return
+		}
+		hl.listTests(w, r)
+		return
+	}
+
 	path := strings.TrimPrefix(r.URL.Path, "/tests/")
 	path = strings.Trim(path, "/")
 	if path == "" {
 		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "test ID is missing"})
+		return
+	}
+
+	if strings.HasSuffix(path, "/schedule/start") {
+		testID := strings.TrimSuffix(path, "/schedule/start")
+		testID = strings.TrimSuffix(testID, "/")
+		if testID == "" {
+			jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "test ID is missing"})
+			return
+		}
+		hl.enableSchedule(w, r, testID)
+		return
+	}
+
+	if strings.HasSuffix(path, "/schedule/stop") {
+		testID := strings.TrimSuffix(path, "/schedule/stop")
+		testID = strings.TrimSuffix(testID, "/")
+		if testID == "" {
+			jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "test ID is missing"})
+			return
+		}
+		hl.disableSchedule(w, r, testID)
+		return
+	}
+
+	if strings.HasSuffix(path, "/runs") {
+		testID := strings.TrimSuffix(path, "/runs")
+		testID = strings.TrimSuffix(testID, "/")
+		if testID == "" {
+			jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "test ID is missing"})
+			return
+		}
+		if r.Method != http.MethodGet {
+			jsonResponse(w, http.StatusMethodNotAllowed, map[string]string{"error": "GET only"})
+			return
+		}
+		hl.listTestRuns(w, r, testID)
 		return
 	}
 
@@ -114,6 +164,74 @@ func (hl *Handler) Tests(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonResponse(w, http.StatusOK, test)
+}
+
+func (hl *Handler) listTests(w http.ResponseWriter, r *http.Request) {
+	items, err := hl.test.ListWithLastRun(r.Context())
+	if err != nil {
+		jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": "failed to list tests"})
+		return
+	}
+	if items == nil {
+		items = []model.TestListItem{}
+	}
+	jsonResponse(w, http.StatusOK, items)
+}
+
+func (hl *Handler) listTestRuns(w http.ResponseWriter, r *http.Request, testID string) {
+	if _, err := hl.test.GetByID(r.Context(), testID); err != nil {
+		jsonResponse(w, http.StatusNotFound, map[string]string{"error": "test not found"})
+		return
+	}
+	runs, err := hl.testRunRepo.ListByTestID(r.Context(), testID)
+	if err != nil {
+		jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": "failed to list runs"})
+		return
+	}
+	if runs == nil {
+		runs = []*model.TestRun{}
+	}
+	jsonResponse(w, http.StatusOK, runs)
+}
+
+// RunRoutes handles GET /runs/{id}/log.
+func (hl *Handler) RunRoutes(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		jsonResponse(w, http.StatusMethodNotAllowed, map[string]string{"error": "GET only"})
+		return
+	}
+	path := strings.TrimPrefix(r.URL.Path, "/runs/")
+	path = strings.Trim(path, "/")
+	if !strings.HasSuffix(path, "/log") {
+		jsonResponse(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	runID := strings.TrimSuffix(path, "/log")
+	runID = strings.TrimSuffix(runID, "/")
+	if runID == "" {
+		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "run ID is missing"})
+		return
+	}
+
+	run, err := hl.testRunRepo.GetByID(r.Context(), runID)
+	if err != nil {
+		jsonResponse(w, http.StatusNotFound, map[string]string{"error": "run not found"})
+		return
+	}
+	if run.LogURL == "" {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	reader, err := hl.storage.DownloadBlob(run.LogURL)
+	if err != nil {
+		jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": "failed to load log"})
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	io.Copy(w, reader)
 }
 
 type UpdateTestConfigRequest struct {
@@ -201,6 +319,10 @@ func (hl *Handler) updateTestConfig(w http.ResponseWriter, r *http.Request, test
 }
 
 func (hl *Handler) Run(h http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		jsonResponse(h, http.StatusMethodNotAllowed, map[string]string{"error": "POST only"})
+		return
+	}
 
 	var req RunRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -247,30 +369,36 @@ func (hl *Handler) UploadBinary(h http.ResponseWriter, r *http.Request) {
 		Str("request_id", uuid.NewString()).
 		Logger()
 
-	if r.Method != "POST" {
+	if r.Method != http.MethodPost {
 		jsonResponse(h, http.StatusMethodNotAllowed, map[string]string{"error": "POST only accepted"})
+		return
+	}
+	if err := r.ParseMultipartForm(maxFileSize); err != nil {
+		jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "invalid multipart form"})
 		return
 	}
 	runtime := r.FormValue("runtime")
 	severity := r.FormValue("severity")
 	command := r.FormValue("command")
+	cron := strings.TrimSpace(r.FormValue("cron"))
+	displayName := strings.TrimSpace(r.FormValue("name"))
 	timeoutStr := r.FormValue("timeout")
 	timeout, err := strconv.Atoi(timeoutStr)
 	if err != nil || timeout == 0 {
 		timeout = 30 // default
 	}
-	if runtime == "" || severity == "" || command == "" {
-		logger.Error().Msg("We required Runtime, Severity, and Command in input.")
-		jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "required Runtime, Severity, and Command in input"})
+	if runtime == "" || severity == "" {
+		jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "runtime and severity are required"})
 		return
 	}
 
 	file, header, err := r.FormFile("binary")
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to read uploaded file")
-		jsonResponse(h, http.StatusInternalServerError, map[string]string{"error": "failed to read file"})
+		jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "binary file is required"})
 		return
 	}
+	defer file.Close()
 
 	logger = logger.With().
 		Str("original_filename", header.Filename).
@@ -295,15 +423,30 @@ func (hl *Handler) UploadBinary(h http.ResponseWriter, r *http.Request) {
 
 	logger.Info().Str("uuid", fileName).Msg("binary uploaded successfully")
 
+	testName := displayName
+	if testName == "" {
+		testName = header.Filename
+	}
+
 	test := &model.Test{
 		UUID:             fileName,
-		Name:             header.Filename,
+		Name:             testName,
 		OriginalFilename: header.Filename,
 		Runtime:          runtime,
 		Command:          command,
 		Severity:         severity,
 		ArtifactKey:      dst,
-		TimeoutSeconds: timeout,
+		TimeoutSeconds:   timeout,
+	}
+	if cron != "" {
+		next, err := schedule.NextRun(cron, time.Now().UTC())
+		if err != nil {
+			jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "invalid cron expression"})
+			return
+		}
+		test.ScheduleCron = cron
+		test.ScheduleEnabled = true
+		test.NextRunAt = &next
 	}
 	if err := hl.test.Create(r.Context(), test); err != nil {
 		jsonResponse(h, http.StatusInternalServerError, map[string]string{
@@ -312,7 +455,7 @@ func (hl *Handler) UploadBinary(h http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonResponse(h, http.StatusOK, map[string]string{
-		"id":      dst,
+		"id":      fileName,
 		"message": "binary uploaded successfully",
 	})
 }

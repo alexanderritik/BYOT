@@ -72,3 +72,11 @@ func (q *Queue) Complete(ctx context.Context, jobID string, status string, error
 func (q *Queue) GetStatus(ctx context.Context, jobID string) (*model.Job, error) {
 	return q.jobRepo.GetByID(ctx, jobID)
 }
+
+func (q *Queue) ListActiveForTest(ctx context.Context, testID string) ([]*model.Job, error) {
+	return q.jobRepo.ListActiveForTest(ctx, testID)
+}
+
+func (q *Queue) CancelActiveForTest(ctx context.Context, testID string, reason string) (int, error) {
+	return q.jobRepo.CancelActiveForTest(ctx, testID, reason)
+}

@@ -26,6 +26,54 @@ func (r *JobRepository) Create(ctx context.Context, job *model.Job) error {
 	return err
 }
 
+func (r *JobRepository) ListActiveForTest(ctx context.Context, testID string) ([]*model.Job, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT uuid, test_id, status, trigger, queued_at, started_at, finished_at, worker_id, error_message
+		 FROM jobs WHERE test_id = $1 AND status IN ('queued', 'running')
+		 ORDER BY queued_at ASC`,
+		testID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var jobs []*model.Job
+	for rows.Next() {
+		var job model.Job
+		if err := rows.Scan(
+			&job.UUID,
+			&job.TestID,
+			&job.Status,
+			&job.Trigger,
+			&job.QueuedAt,
+			&job.StartedAt,
+			&job.FinishedAt,
+			&job.WorkerID,
+			&job.ErrorMessage,
+		); err != nil {
+			return nil, err
+		}
+		jobs = append(jobs, &job)
+	}
+	return jobs, rows.Err()
+}
+
+func (r *JobRepository) CancelActiveForTest(ctx context.Context, testID string, reason string) (int, error) {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE jobs
+		 SET status = 'cancelled',
+		     finished_at = NOW(),
+		     error_message = $2
+		 WHERE test_id = $1 AND status IN ('queued', 'running')`,
+		testID, reason,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return int(tag.RowsAffected()), nil
+}
+
 func (r *JobRepository) HasActiveJob(ctx context.Context, testID string) (bool, error) {
 	var exists bool
 	err := r.pool.QueryRow(ctx,

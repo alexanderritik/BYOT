@@ -68,11 +68,25 @@ func (w *Worker) processNextJob(ctx context.Context) {
 
 	log.Info().Str("worker_id", w.workerID).Str("job_id", job.UUID).Str("test_id", job.TestID).Msg("processing job")
 
+	current, err := w.queue.GetStatus(ctx, job.UUID)
+	if err == nil && current.Status == "cancelled" {
+		log.Info().Str("job_id", job.UUID).Msg("job already cancelled")
+		return
+	}
+
 	if err := w.executeJob(ctx, job); err != nil {
+		current, _ = w.queue.GetStatus(ctx, job.UUID)
+		if current != nil && current.Status == "cancelled" {
+			return
+		}
 		log.Error().Err(err).Str("worker_id", w.workerID).Str("job_id", job.UUID).Msg("job execution failed")
 		errorMsg := err.Error()
 		w.queue.Complete(ctx, job.UUID, "failed", &errorMsg)
 	} else {
+		current, _ = w.queue.GetStatus(ctx, job.UUID)
+		if current != nil && current.Status == "cancelled" {
+			return
+		}
 		w.queue.Complete(ctx, job.UUID, "completed", nil)
 	}
 }
@@ -136,7 +150,7 @@ func (w *Worker) executeJob(ctx context.Context, job *model.Job) error {
 	}
 
 	startedAt := time.Now().UTC()
-	result, execErr := runtime.Execute(workspace, spec, timeout)
+	result, execErr := runtime.Execute(job.UUID, workspace, spec, timeout)
 	finishedAt := time.Now().UTC()
 	duration := finishedAt.Sub(startedAt)
 

@@ -24,6 +24,7 @@ package scheduler
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	"github.com/alexanderritik/mini-lambda/model"
@@ -38,6 +39,7 @@ type Scheduler struct {
 	queue        *queue.Queue
 	jobs         *repository.JobRepository
 	tickInterval time.Duration
+	paused       atomic.Bool
 }
 
 func NewScheduler(
@@ -55,6 +57,20 @@ func NewScheduler(
 		jobs:         jobs,
 		tickInterval: tickInterval,
 	}
+}
+
+func (s *Scheduler) Pause() {
+	s.paused.Store(true)
+	log.Info().Msg("scheduler paused")
+}
+
+func (s *Scheduler) Resume() {
+	s.paused.Store(false)
+	log.Info().Msg("scheduler resumed")
+}
+
+func (s *Scheduler) IsPaused() bool {
+	return s.paused.Load()
 }
 
 func (s *Scheduler) Start(ctx context.Context) {
@@ -75,6 +91,9 @@ func (s *Scheduler) Start(ctx context.Context) {
 }
 
 func (s *Scheduler) tick(ctx context.Context) {
+	if s.paused.Load() {
+		return
+	}
 	now := time.Now().UTC()
 	due, err := s.tests.ListDueScheduled(ctx, now)
 	if err != nil {

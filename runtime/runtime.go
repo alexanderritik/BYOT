@@ -57,6 +57,7 @@ type Result struct {
 }
 
 func Execute(
+	jobID string,
 	workspace string,
 	spec RuntimeSpec,
 	timeout time.Duration,
@@ -82,6 +83,8 @@ func Execute(
 	if err := cmd.Start(); err != nil {
 		return Result{ExitCode: -1}, fmt.Errorf("start docker: %w", err)
 	}
+	registerActive(jobID, cmd)
+	defer unregisterActive(jobID)
 
 	var (
 		buf bytes.Buffer

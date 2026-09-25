@@ -20,6 +20,7 @@ type TestConfigUpdate struct {
 type TestRepository interface {
 	Create(ctx context.Context, test *model.Test) error
 	GetByID(ctx context.Context, uuid string) (*model.Test, error)
+	ListWithLastRun(ctx context.Context) ([]model.TestListItem, error)
 	UpdateConfig(ctx context.Context, testID string, cfg TestConfigUpdate) error
 	ListDueScheduled(ctx context.Context, now time.Time) ([]*model.Test, error)
 	UpdateNextRunAt(ctx context.Context, testID string, next time.Time) error
@@ -87,6 +88,71 @@ func (r *postgresTestRepository) GetByID(ctx context.Context, uuid string) (*mod
 		return nil, err
 	}
 	return &test, nil
+}
+
+func (r *postgresTestRepository) ListWithLastRun(ctx context.Context) ([]model.TestListItem, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT t.uuid::text, COALESCE(t.name, ''), t.runtime, t.original_filename, t.severity,
+		        COALESCE(t.command, ''), COALESCE(t.artifact_key, ''), t.created_at, t.timeout_seconds,
+		        COALESCE(t.schedule_cron, ''), t.schedule_enabled, t.next_run_at,
+		        lr.status, lr.started_at, lr.duration_ms,
+		        EXISTS (
+		          SELECT 1 FROM jobs j
+		          WHERE j.test_id = t.uuid AND j.status IN ('queued', 'running')
+		        )
+		 FROM tests t
+		 LEFT JOIN LATERAL (
+		   SELECT status, started_at, duration_ms
+		   FROM tests_runs r
+		   WHERE r.test_id = t.uuid
+		   ORDER BY started_at DESC
+		   LIMIT 1
+		 ) lr ON true
+		 ORDER BY t.created_at DESC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []model.TestListItem
+	for rows.Next() {
+		var test model.Test
+		var lastStatus *string
+		var lastStarted *time.Time
+		var lastDuration *int64
+		var activeJob bool
+		if err := rows.Scan(
+			&test.UUID,
+			&test.Name,
+			&test.Runtime,
+			&test.OriginalFilename,
+			&test.Severity,
+			&test.Command,
+			&test.ArtifactKey,
+			&test.CreatedAt,
+			&test.TimeoutSeconds,
+			&test.ScheduleCron,
+			&test.ScheduleEnabled,
+			&test.NextRunAt,
+			&lastStatus,
+			&lastStarted,
+			&lastDuration,
+			&activeJob,
+		); err != nil {
+			return nil, err
+		}
+		item := model.TestListItem{Test: test, ActiveJob: activeJob}
+		if lastStatus != nil && lastStarted != nil && lastDuration != nil {
+			item.LastRun = &model.LastRunSummary{
+				Status:     *lastStatus,
+				StartedAt:  *lastStarted,
+				DurationMs: *lastDuration,
+			}
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
 }
 
 func (r *postgresTestRepository) UpdateConfig(ctx context.Context, testID string, cfg TestConfigUpdate) error {

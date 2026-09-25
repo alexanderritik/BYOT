@@ -11,6 +11,7 @@ import (
 
 type TestRunRepository interface {
 	Create(ctx context.Context, run *model.TestRun) error
+	GetByID(ctx context.Context, runID string) (*model.TestRun, error)
 	ListByTestID(ctx context.Context, testID string) ([]*model.TestRun, error)
 }
 
@@ -30,6 +31,28 @@ func (r *postgresTestRunRepository) Create(ctx context.Context, run *model.TestR
 		run.StartedAt, run.FinishedAt, run.LogURL, run.LogSizeBytes,
 	)
 	return err
+}
+
+func (r *postgresTestRunRepository) GetByID(ctx context.Context, runID string) (*model.TestRun, error) {
+	var run model.TestRun
+	err := r.pool.QueryRow(ctx,
+		`SELECT uuid::text, test_id::text, status, duration_ms, started_at, finished_at, log_url, log_size_bytes
+		 FROM tests_runs WHERE uuid = $1`,
+		runID,
+	).Scan(
+		&run.UUID,
+		&run.TestID,
+		&run.Status,
+		&run.DurationMs,
+		&run.StartedAt,
+		&run.FinishedAt,
+		&run.LogURL,
+		&run.LogSizeBytes,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &run, nil
 }
 
 func (r *postgresTestRunRepository) ListByTestID(ctx context.Context, testID string) ([]*model.TestRun, error) {

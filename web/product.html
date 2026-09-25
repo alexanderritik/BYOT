@@ -114,6 +114,12 @@ tbody tr.clickable:hover{background:var(--surface-2);}
 .btn-ghost{border-color:transparent;background:transparent;color:var(--text-muted);}
 .btn-ghost:hover{background:var(--surface-2);color:var(--text);}
 .btn-sm{padding:.32rem .65rem;font-size:.75rem;}
+.btn-danger{color:var(--danger);border-color:transparent;background:var(--danger-soft);}
+.btn-danger:hover{filter:brightness(1.06);}
+.btn-row{display:flex;gap:.35rem;justify-content:flex-end;flex-wrap:wrap;}
+.btn-icon{min-width:5.5rem;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:.75rem;letter-spacing:.02em;}
+.btn-play.btn-accent{box-shadow:0 0 0 1px var(--accent-soft);}
+.btn-stop.btn-danger{font-weight:700;}
 
 /* ---- forms ---- */
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.1rem;max-width:720px;}
@@ -159,7 +165,7 @@ tbody tr.clickable:hover{background:var(--surface-2);}
 <div class="app">
   <div class="rail">
     <div class="brand"><span class="brand-dot"></span><span class="brand-name">BYO<span style="color:var(--accent)">T</span></span></div>
-    <div class="brand-tag">design preview · mock data</div>
+    <div class="brand-tag">live · connected to API</div>
     <div class="nav">
       <button class="nav-item active" data-nav="dashboard" onclick="go('dashboard')">
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="3" width="6" height="6" rx="1"/><rect x="11.5" y="3" width="6" height="6" rx="1"/><rect x="2.5" y="11" width="6" height="6" rx="1"/><rect x="11.5" y="11" width="6" height="6" rx="1"/></svg>
@@ -170,98 +176,98 @@ tbody tr.clickable:hover{background:var(--surface-2);}
         Upload test
       </button>
     </div>
-    <div class="rail-foot">Server <code>:3000</code><br>Runtimes <code>go</code> · <code>node</code></div>
+    <div class="rail-foot">Server <code>:3000</code><br>Runtimes <code>go</code> · <code>node</code><br><span class="tid">▶ Play / ■ Stop = cron on/off</span></div>
   </div>
   <div class="main" id="main"></div>
 </div>
 
 <script>
-const TESTS = [
-  {
-    id:'a3f8b2c1-9e21-4b3a-8f10-77c2d4e9a001', name:'checkout-flow.spec', runtime:'node', severity:'P0',
-    schedule:'*/15 * * * *', scheduleLabel:'every 15 min', nextRun:'in 6 min',
-    webhook:'https://hooks.slack.com/services/T0X/B0Y/xxxxxxxx', failureThreshold:3, consecutiveFailures:3,
-    lastStatus:'fail', lastRunAgo:'4 min ago', lastDurationMs:1840, timeout:60,
-    runs:[
-      {id:'r1',startedAt:'2026-09-07T03:15:02+05:30',status:'fail',durationMs:1840,logSize:'1.2 KB',log:[
-        {t:'2026-09-07T03:15:02+05:30',s:'stdout',l:'Starting checkout flow...'},
-        {t:'2026-09-07T03:15:03+05:30',s:'stdout',l:'✓ Login successful'},
-        {t:'2026-09-07T03:15:04+05:30',s:'stdout',l:'✓ Cart updated'},
-        {t:'2026-09-07T03:15:06+05:30',s:'stderr',l:'✗ Pay button not found'},
-        {t:'2026-09-07T03:15:06+05:30',s:'stderr',l:'Test FAILED · 3rd consecutive failure'},
-        {t:'2026-09-07T03:15:06+05:30',s:'stdout',l:'→ webhook alert sent (threshold=3)'},
-      ]},
-      {id:'r2',startedAt:'2026-09-07T03:00:01+05:30',status:'fail',durationMs:1790,logSize:'1.1 KB',log:[
-        {t:'2026-09-07T03:00:01+05:30',s:'stdout',l:'Starting checkout flow...'},
-        {t:'2026-09-07T03:00:02+05:30',s:'stdout',l:'✓ Login successful'},
-        {t:'2026-09-07T03:00:03+05:30',s:'stderr',l:'✗ Cart update timed out'},
-      ]},
-      {id:'r3',startedAt:'2026-09-07T02:45:01+05:30',status:'fail',durationMs:1802,logSize:'1.1 KB',log:[
-        {t:'2026-09-07T02:45:01+05:30',s:'stdout',l:'Starting checkout flow...'},
-        {t:'2026-09-07T02:45:02+05:30',s:'stderr',l:'✗ Login failed: 502 from auth service'},
-      ]},
-      {id:'r4',startedAt:'2026-09-07T02:30:01+05:30',status:'pass',durationMs:2210,logSize:'1.3 KB',log:[
-        {t:'2026-09-07T02:30:01+05:30',s:'stdout',l:'Starting checkout flow...'},
-        {t:'2026-09-07T02:30:02+05:30',s:'stdout',l:'✓ Login successful'},
-        {t:'2026-09-07T02:30:03+05:30',s:'stdout',l:'✓ Cart updated'},
-        {t:'2026-09-07T02:30:03+05:30',s:'stdout',l:'✓ Payment charged'},
-      ]},
-    ]
-  },
-  {
-    id:'f2b7dd07-5ee0-4c80-8cbd-c7a8588f8227', name:'api-smoke-test', runtime:'node', severity:'P1',
-    schedule:'0 * * * *', scheduleLabel:'hourly', nextRun:'in 42 min',
-    webhook:'', failureThreshold:1, consecutiveFailures:0,
-    lastStatus:'pass', lastRunAgo:'18 min ago', lastDurationMs:612, timeout:30,
-    runs:[
-      {id:'r1',startedAt:'2026-09-07T02:44:10+05:30',status:'pass',durationMs:612,logSize:'0.4 KB',log:[
-        {t:'2026-09-07T02:44:10+05:30',s:'stdout',l:'GET /health → 200'},
-        {t:'2026-09-07T02:44:10+05:30',s:'stdout',l:'GET /orders → 200 (18 items)'},
-        {t:'2026-09-07T02:44:11+05:30',s:'stdout',l:'✓ 3/3 checks passed'},
-      ]},
-      {id:'r2',startedAt:'2026-09-07T01:44:08+05:30',status:'pass',durationMs:598,logSize:'0.4 KB',log:[
-        {t:'2026-09-07T01:44:08+05:30',s:'stdout',l:'✓ 3/3 checks passed'},
-      ]},
-    ]
-  },
-  {
-    id:'978c4359-b255-4f4c-9e8c-341ec934f6be', name:'db-connection-check', runtime:'go', severity:'P2',
-    schedule:'*/5 * * * *', scheduleLabel:'every 5 min', nextRun:'in 2 min',
-    webhook:'', failureThreshold:1, consecutiveFailures:0,
-    lastStatus:'pass', lastRunAgo:'3 min ago', lastDurationMs:245, timeout:15,
-    runs:[
-      {id:'r1',startedAt:'2026-09-07T03:16:33+05:30',status:'pass',durationMs:245,logSize:'0.1 KB',log:[
-        {t:'2026-09-07T03:16:33+05:30',s:'stdout',l:'hello from a sample test binary'},
-        {t:'2026-09-07T03:16:33+05:30',s:'stdout',l:'checkout flow: login ok, cart ok, pay ok'},
-      ]},
-    ]
-  },
-  {
-    id:'d5fc3848-17c7-4f80-a057-354645bc5edc', name:'cdn-availability', runtime:'go', severity:'P3',
-    schedule:null, scheduleLabel:'manual only', nextRun:'—',
-    webhook:'', failureThreshold:1, consecutiveFailures:0,
-    lastStatus:'pending', lastRunAgo:'never', lastDurationMs:null, timeout:30,
-    runs:[]
-  },
-];
+const state = { view: 'dashboard', testId: null, runId: null };
+let testList = [];
 
-const state = {view:'dashboard', testId:null, runId:null};
-
-function findTest(id){ return TESTS.find(t=>t.id===id); }
 function esc(s){ return (s??'').toString().replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function shortId(id){ return id.slice(0,8); }
+function shortId(id){ return (id||'').slice(0,8); }
+
+async function apiJson(url, opts){
+  const res = await fetch(url, opts);
+  if (!res.ok){
+    let msg = res.statusText;
+    try { const j = await res.json(); msg = j.error || msg; } catch {}
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
 
 function statusPill(status){
   const label = {pass:'passing',fail:'failing',pending:'no runs yet',running:'running'}[status] || status;
   return `<span class="status ${status}"><span class="status-dot"></span>${label}</span>`;
 }
-function sevPill(sev){ return `<span class="pill pill-${sev.toLowerCase()}">${sev}</span>`; }
-function runtimeBadge(rt){ return `<span class="runtime-badge">${rt}</span>`; }
+function sevPill(sev){ return `<span class="pill pill-${(sev||'P2').toLowerCase()}">${esc(sev)}</span>`; }
+function runtimeBadge(rt){ return `<span class="runtime-badge">${esc(rt)}</span>`; }
 
-function go(view, a, b){
-  state.view = view; state.testId = a ?? null; state.runId = b ?? null;
-  document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active', n.dataset.nav===view));
-  render();
+function lastStatus(item){
+  return item.last_run ? item.last_run.status : 'pending';
+}
+
+function scheduleLabel(test){
+  if (!test.schedule_cron) return 'manual only';
+  return test.schedule_enabled ? `${test.schedule_cron} · on` : `${test.schedule_cron} · paused`;
+}
+
+function testByUUID(uuid){
+  return (testList || []).find(x=>x?.test?.uuid===uuid)?.test;
+}
+
+function formatNextRun(test){
+  if (!test.schedule_enabled || !test.next_run_at) return '';
+  const t = new Date(test.next_run_at);
+  const diff = t - Date.now();
+  if (diff < 0) return 'due now';
+  const mins = Math.round(diff / 60000);
+  if (mins < 60) return `in ${mins} min`;
+  const hrs = Math.round(mins / 60);
+  return `in ${hrs} hr`;
+}
+
+function timeAgo(iso){
+  const t = new Date(iso);
+  const sec = Math.floor((Date.now() - t) / 1000);
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min} min ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 48) return `${hr} hr ago`;
+  return t.toLocaleString();
+}
+
+function formatBytes(n){
+  if (n == null || n === 0) return '0 B';
+  if (n < 1024) return `${n} B`;
+  return `${(n/1024).toFixed(1)} KB`;
+}
+
+function parseLogText(raw){
+  return (raw||'').trim().split('\n').filter(Boolean).map(line=>{
+    const m = line.match(/^(\S+)\s+\[(stdout|stderr)\]\s(.*)$/);
+    if (!m) return {t:'', s:'stdout', l: line};
+    return {t:m[1], s:m[2], l:m[3]};
+  });
+}
+
+async function refreshTests(){
+  const data = await apiJson('/tests');
+  testList = Array.isArray(data) ? data : [];
+}
+
+async function go(view, a, b){
+  state.view = view;
+  state.testId = a ?? null;
+  state.runId = b ?? null;
+  const navView = view === 'test' || view === 'run' ? 'dashboard' : view;
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active', n.dataset.nav===navView));
+  await render();
   window.scrollTo(0,0);
 }
 
@@ -274,31 +280,108 @@ function toast(msg){
   setTimeout(()=>{ el.style.transition='opacity .25s'; el.style.opacity='0'; setTimeout(()=>el.remove(),260); }, 3200);
 }
 
-function runNow(id){
-  const t = findTest(id);
-  toast(`Run triggered for <strong>${esc(t.name)}</strong> — executing in an isolated container…`);
-  setTimeout(()=>{
-    toast(`${esc(t.name)} finished · ${t.lastStatus === 'fail' ? 'still failing' : 'passed'} (see run history)`);
-  }, 1400);
+async function pollJob(jobId){
+  for (let i = 0; i < 120; i++){
+    await sleep(1500);
+    const j = await apiJson('/status/' + jobId);
+    if (j.status === 'completed' || j.status === 'failed' || j.status === 'cancelled') return j;
+  }
+  throw new Error('timed out waiting for job');
 }
 
-function renderDashboard(){
-  const total = TESTS.length;
-  const passing = TESTS.filter(t=>t.lastStatus==='pass').length;
-  const failing = TESTS.filter(t=>t.lastStatus==='fail').length;
-  const alerts = TESTS.filter(t=>t.consecutiveFailures>=t.failureThreshold && t.consecutiveFailures>0).length;
+function scheduleButton(uuid, sizeClass){
+  const sm = sizeClass || 'btn-sm';
+  const t = testByUUID(uuid);
+  if (!t) return '';
+  if (t.schedule_enabled){
+    return `<button type="button" class="btn ${sm} btn-danger btn-icon btn-stop" title="Disable cron schedule" onclick="event.stopPropagation(); disableSchedule('${uuid}')">■ Stop</button>`;
+  }
+  if (!t.schedule_cron){
+    return `<button type="button" class="btn ${sm} btn-ghost btn-icon" disabled title="Add a cron when uploading">▶ Play</button>`;
+  }
+  return `<button type="button" class="btn ${sm} btn-accent btn-icon btn-play" title="Enable cron schedule" onclick="event.stopPropagation(); enableSchedule('${uuid}')">▶ Play</button>`;
+}
 
-  const rows = TESTS.map(t=>`
-    <tr class="clickable" onclick="go('test','${t.id}')">
-      <td>${statusPill(t.lastStatus)}</td>
-      <td><div class="tname">${esc(t.name)}</div><div class="tid mono">${shortId(t.id)}</div></td>
+function actionButtons(uuid, sizeClass){
+  const sm = sizeClass || 'btn-sm';
+  return `<div class="btn-row" onclick="event.stopPropagation()">
+    <button type="button" class="btn ${sm} btn-accent" onclick="runNow('${uuid}')">Run now</button>
+    ${scheduleButton(uuid, sm)}
+  </div>`;
+}
+
+async function enableSchedule(id){
+  const name = testByUUID(id)?.name || id;
+  try {
+    await apiJson('/tests/' + id + '/schedule/start', { method: 'POST' });
+    await refreshTests();
+    toast(`Schedule <strong>on</strong> for ${esc(name)}`);
+    if (state.view === 'dashboard') await renderDashboard();
+    else if (state.view === 'test' && state.testId === id) await renderTestDetail(id);
+  } catch (e) {
+    toast(esc(e.message));
+  }
+}
+
+async function disableSchedule(id){
+  const name = testByUUID(id)?.name || id;
+  try {
+    await apiJson('/tests/' + id + '/schedule/stop', { method: 'POST' });
+    await refreshTests();
+    toast(`Schedule <strong>off</strong> for ${esc(name)}`);
+    if (state.view === 'dashboard') await renderDashboard();
+    else if (state.view === 'test' && state.testId === id) await renderTestDetail(id);
+  } catch (e) {
+    toast(esc(e.message));
+  }
+}
+
+async function runNow(id){
+  const item = testList.find(x=>x.test.uuid===id);
+  const name = item ? item.test.name : id;
+  toast(`Manual run for <strong>${esc(name)}</strong>…`);
+  try {
+    const res = await apiJson('/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ testId: id }),
+    });
+    const job = await pollJob(res.job_id);
+    await refreshTests();
+    const st = lastStatus(testList.find(x=>x.test.uuid===id) || {last_run:null});
+    toast(`<strong>${esc(name)}</strong> · ${esc(job.status)} · run ${esc(st)}`);
+    if (state.view === 'dashboard') await renderDashboard();
+    else if (state.view === 'test' && state.testId === id) await renderTestDetail(id);
+  } catch (e) {
+    toast(esc(e.message));
+  }
+}
+
+async function renderDashboard(){
+  document.getElementById('main').innerHTML = '<div class="empty">Loading monitors…</div>';
+  await refreshTests();
+  const total = testList.length;
+  const passing = testList.filter(t=>lastStatus(t)==='pass').length;
+  const failing = testList.filter(t=>lastStatus(t)==='fail').length;
+
+  const rows = testList.map(item=>{
+    const t = item.test;
+    const st = lastStatus(item);
+    const lr = item.last_run;
+    const next = formatNextRun(t);
+    const sched = scheduleLabel(t);
+    return `
+    <tr class="clickable" onclick="go('test','${t.uuid}')">
+      <td>${statusPill(st)}</td>
+      <td><div class="tname">${esc(t.name)}</div><div class="tid mono">${shortId(t.uuid)}</div></td>
       <td>${runtimeBadge(t.runtime)}</td>
       <td>${sevPill(t.severity)}</td>
-      <td class="mono">${esc(t.scheduleLabel)}${t.schedule ? `<div class="tid">next ${esc(t.nextRun)}</div>` : ''}</td>
-      <td>${t.lastDurationMs!=null ? `${t.lastRunAgo}<div class="tid">${t.lastDurationMs} ms</div>` : '—'}</td>
-      <td>${t.consecutiveFailures>=t.failureThreshold && t.consecutiveFailures>0 ? `<span class="bell">🔔 alert sent</span>` : (t.consecutiveFailures>0 ? `<span class="tid">${t.consecutiveFailures} failing</span>` : '')}</td>
-      <td style="text-align:right"><button class="btn btn-sm btn-accent" onclick="event.stopPropagation(); runNow('${t.id}')">Run now</button></td>
-    </tr>`).join('');
+      <td class="mono">${esc(sched)}${next ? `<div class="tid">next ${esc(next)}</div>` : ''}</td>
+      <td>${lr ? `${timeAgo(lr.started_at)}<div class="tid">${lr.duration_ms} ms</div>` : '—'}</td>
+      <td class="tid">—</td>
+      <td style="text-align:right">${actionButtons(t.uuid)}</td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="8" class="empty">No tests yet — upload your first binary.</td></tr>`;
 
   document.getElementById('main').innerHTML = `
     <div class="page-head">
@@ -312,61 +395,80 @@ function renderDashboard(){
       <div class="stat"><div class="stat-n">${total}</div><div class="stat-l">monitors</div></div>
       <div class="stat ok"><div class="stat-n">${passing}</div><div class="stat-l">passing</div></div>
       <div class="stat bad"><div class="stat-n">${failing}</div><div class="stat-l">failing</div></div>
-      <div class="stat warn"><div class="stat-n">${alerts}</div><div class="stat-l">alerts fired today</div></div>
+      <div class="stat warn"><div class="stat-n">0</div><div class="stat-l">alerts (coming soon)</div></div>
     </div>
     <div class="panel"><div class="twrap"><table>
-      <thead><tr><th>Status</th><th>Test</th><th>Runtime</th><th>Severity</th><th>Schedule</th><th>Last run</th><th>Failures</th><th></th></tr></thead>
+      <thead><tr><th>Status</th><th>Test</th><th>Runtime</th><th>Severity</th><th>Schedule</th><th>Last run</th><th>Alerts</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div></div>`;
 }
 
-function renderTestDetail(id){
-  const t = findTest(id);
-  const runs = t.runs.map(r=>`
-    <tr class="clickable" onclick="go('run','${t.id}','${r.id}')">
+async function renderTestDetail(id){
+  document.getElementById('main').innerHTML = '<div class="empty">Loading test…</div>';
+  await refreshTests();
+  const t = await apiJson('/tests/' + id);
+  const runsRaw = await apiJson('/tests/' + id + '/runs');
+  const runs = Array.isArray(runsRaw) ? runsRaw : [];
+  const listItem = (testList || []).find(x=>x.test.uuid===id);
+  const st = listItem ? lastStatus(listItem) : (runs[0] ? runs[0].status : 'pending');
+
+  const runRows = runs.map(r=>`
+    <tr class="clickable" onclick="go('run','${id}','${r.uuid}')">
       <td>${statusPill(r.status)}</td>
-      <td class="mono">${esc(r.startedAt)}</td>
-      <td class="mono">${r.durationMs} ms</td>
-      <td class="mono">${esc(r.logSize)}</td>
-    </tr>`).join('') || `<tr><td colspan="4" class="empty">No runs yet — this test hasn't executed.</td></tr>`;
+      <td class="mono">${esc(r.started_at)}</td>
+      <td class="mono">${r.duration_ms} ms</td>
+      <td class="mono">${formatBytes(r.log_size_bytes)}</td>
+    </tr>`).join('') || `<tr><td colspan="4" class="empty">No runs yet — hit Run now or wait for the schedule.</td></tr>`;
+
+  const cmd = t.command ? esc(t.command) : '<span class="tid">runtime default</span>';
 
   document.getElementById('main').innerHTML = `
     <div class="crumbs"><button onclick="go('dashboard')">Dashboard</button><span class="sep">/</span><span class="cur">${esc(t.name)}</span></div>
     <div class="page-head">
       <div>
         <h1>${esc(t.name)}</h1>
-        <p class="sub">${statusPill(t.lastStatus)} &nbsp;·&nbsp; ${sevPill(t.severity)} &nbsp;·&nbsp; ${runtimeBadge(t.runtime)}</p>
+        <p class="sub">${statusPill(st)} &nbsp;·&nbsp; ${sevPill(t.severity)} &nbsp;·&nbsp; ${runtimeBadge(t.runtime)}</p>
       </div>
-      <button class="btn btn-accent" onclick="runNow('${t.id}')">Run now</button>
+      <div class="btn-row">${actionButtons(t.uuid, '')}</div>
     </div>
     <div class="panel">
       <div class="kv-strip">
-        <div><span class="kv-k">Test ID</span><span class="kv-v">${t.id}</span></div>
-        <div><span class="kv-k">Schedule</span><span class="kv-v">${esc(t.schedule || 'manual only')}</span></div>
-        <div><span class="kv-k">Timeout</span><span class="kv-v">${t.timeout}s</span></div>
-        <div><span class="kv-k">Failure threshold</span><span class="kv-v">${t.failureThreshold} run${t.failureThreshold>1?'s':''}</span></div>
-        <div><span class="kv-k">Consecutive failures</span><span class="kv-v">${t.consecutiveFailures}</span></div>
-        <div><span class="kv-k">Webhook</span><span class="kv-v">${t.webhook ? esc(t.webhook) : 'not configured'}</span></div>
+        <div><span class="kv-k">Test ID</span><span class="kv-v">${t.uuid}</span></div>
+        <div><span class="kv-k">Schedule</span><span class="kv-v">${esc(scheduleLabel(t))}</span></div>
+        <div><span class="kv-k">Cron enabled</span><span class="kv-v">${t.schedule_enabled ? 'yes' : 'no'}</span></div>
+        <div><span class="kv-k">Command</span><span class="kv-v">${cmd}</span></div>
+        <div><span class="kv-k">Timeout</span><span class="kv-v">${t.timeout_seconds}s</span></div>
       </div>
     </div>
     <div class="section-title">Run history</div>
     <div class="panel"><div class="twrap"><table>
       <thead><tr><th>Status</th><th>Started</th><th>Duration</th><th>Log size</th></tr></thead>
-      <tbody>${runs}</tbody>
+      <tbody>${runRows}</tbody>
     </table></div></div>`;
 }
 
-function renderRunDetail(testId, runId){
-  const t = findTest(testId);
-  const r = t.runs.find(x=>x.id===runId);
-  const logLines = r.log.map(x=>`<div class="log-line"><span class="log-t">${esc(x.t)}</span> <span class="log-stdout" style="color:${x.s==='stderr' ? 'var(--log-stderr,#ff8a93)':'inherit'}">[${x.s}]</span> <span class="${x.s==='stderr'?'log-stderr':'log-stdout'}">${esc(x.l)}</span></div>`).join('');
+async function renderRunDetail(testId, runId){
+  document.getElementById('main').innerHTML = '<div class="empty">Loading log…</div>';
+  const t = await apiJson('/tests/' + testId);
+  const runsRaw = await apiJson('/tests/' + testId + '/runs');
+  const runs = Array.isArray(runsRaw) ? runsRaw : [];
+  const r = runs.find(x=>x.uuid===runId);
+  if (!r){
+    document.getElementById('main').innerHTML = '<div class="empty">Run not found.</div>';
+    return;
+  }
+  const raw = await fetch('/runs/' + runId + '/log').then(res=>{
+    if (!res.ok) throw new Error('failed to load log');
+    return res.text();
+  });
+  const logLines = parseLogText(raw).map(x=>`<div class="log-line"><span class="log-t">${esc(x.t)}</span> <span class="log-stdout">[${x.s}]</span> <span class="${x.s==='stderr'?'log-stderr':'log-stdout'}">${esc(x.l)}</span></div>`).join('');
 
   document.getElementById('main').innerHTML = `
-    <div class="crumbs"><button onclick="go('dashboard')">Dashboard</button><span class="sep">/</span><button onclick="go('test','${t.id}')">${esc(t.name)}</button><span class="sep">/</span><span class="cur">run @ ${esc(r.startedAt.slice(11,19))}</span></div>
+    <div class="crumbs"><button onclick="go('dashboard')">Dashboard</button><span class="sep">/</span><button onclick="go('test','${testId}')">${esc(t.name)}</button><span class="sep">/</span><span class="cur">run</span></div>
     <div class="page-head">
       <div>
         <h1>Run detail</h1>
-        <p class="sub">${statusPill(r.status)} &nbsp;·&nbsp; started ${esc(r.startedAt)} &nbsp;·&nbsp; ${r.durationMs} ms &nbsp;·&nbsp; ${esc(r.logSize)} log</p>
+        <p class="sub">${statusPill(r.status)} &nbsp;·&nbsp; started ${esc(r.started_at)} &nbsp;·&nbsp; ${r.duration_ms} ms &nbsp;·&nbsp; ${formatBytes(r.log_size_bytes)}</p>
       </div>
     </div>
     <div class="term">
@@ -375,33 +477,51 @@ function renderRunDetail(testId, runId){
     </div>`;
 }
 
+function bindDropzone(){
+  const dz = document.getElementById('dropzone');
+  const input = document.getElementById('file-input');
+  const label = document.getElementById('file-label');
+  if (!dz || !input) return;
+  dz.addEventListener('click', ()=> input.click());
+  input.addEventListener('change', ()=>{
+    const f = input.files[0];
+    label.textContent = f ? f.name : 'Drop a binary or browse…';
+  });
+}
+
 function renderUpload(){
   document.getElementById('main').innerHTML = `
     <div class="crumbs"><button onclick="go('dashboard')">Dashboard</button><span class="sep">/</span><span class="cur">Upload test</span></div>
     <h1>Upload a test</h1>
-    <p class="sub">Bring a binary you already have — Playwright, k6, a compiled Go check — and BYOT runs it for you.</p>
+    <p class="sub">Upload an artifact and pick a runtime — BYOT runs it in Docker on demand or on a cron.</p>
     <form class="panel" style="padding:1.5rem 1.75rem" onsubmit="submitUpload(event)">
       <div class="form-grid">
         <div class="field full">
+          <label for="test-name">Monitor name</label>
+          <input id="test-name" type="text" placeholder="e.g. checkout-flow, api-smoke" required maxlength="120">
+          <span class="hint">Shown in the dashboard — not the file name on disk.</span>
+        </div>
+        <div class="field full">
           <label>Test binary</label>
-          <div class="dropzone">Drop a compiled binary here, or <strong>browse…</strong><br>any language — if it runs, BYOT runs it.</div>
+          <div class="dropzone" id="dropzone"><span id="file-label">Drop a binary or <strong>browse…</strong></span></div>
+          <input type="file" id="file-input" hidden>
         </div>
         <div class="field">
           <label for="rt">Runtime</label>
-          <select id="rt"><option value="go">go — alpine</option><option value="node">node — node:18</option></select>
+          <select id="rt"><option value="go">go</option><option value="node">node</option><option value="k6">k6</option></select>
         </div>
         <div class="field">
           <label for="sev">Severity</label>
-          <select id="sev"><option>P0</option><option>P1</option><option selected>P2</option><option>P3</option></select>
-          <span class="hint">P0 pages on-call · P3 goes in the weekly digest</span>
+          <select id="sev"><option value="P0">P0</option><option value="P1">P1</option><option value="P2" selected>P2</option><option value="P3">P3</option></select>
+        </div>
+        <div class="field">
+          <label for="command">Command (optional)</label>
+          <input id="command" placeholder="./artifact or node ./artifact">
+          <span class="hint">Leave empty to use the runtime default.</span>
         </div>
         <div class="field">
           <label for="timeout">Timeout (seconds)</label>
           <input id="timeout" type="number" value="30" min="1">
-        </div>
-        <div class="field">
-          <label for="thresh">Alert after N failures</label>
-          <input id="thresh" type="number" value="1" min="1">
         </div>
         <div class="field full">
           <label for="cron">Schedule (cron, optional)</label>
@@ -410,46 +530,56 @@ function renderUpload(){
             <span class="chip" onclick="document.getElementById('cron').value='*/5 * * * *'">every 5 min</span>
             <span class="chip" onclick="document.getElementById('cron').value='*/15 * * * *'">every 15 min</span>
             <span class="chip" onclick="document.getElementById('cron').value='0 * * * *'">hourly</span>
-            <span class="chip" onclick="document.getElementById('cron').value='0 9 * * *'">daily 9am</span>
           </div>
-        </div>
-        <div class="field full">
-          <label for="hook">Webhook URL (optional)</label>
-          <input id="hook" placeholder="https://hooks.slack.com/services/...">
-          <span class="hint">Slack, Discord, PagerDuty, or your own endpoint — all accept a plain JSON POST.</span>
         </div>
       </div>
       <div style="margin-top:1.5rem;display:flex;gap:.6rem">
-        <button type="submit" class="btn btn-accent">Upload &amp; create monitor</button>
+        <button type="submit" class="btn btn-accent" id="upload-btn">Upload &amp; create monitor</button>
         <button type="button" class="btn btn-ghost" onclick="go('dashboard')">Cancel</button>
       </div>
     </form>`;
+  bindDropzone();
 }
 
-function submitUpload(e){
+async function submitUpload(e){
   e.preventDefault();
-  const name = document.querySelector('.dropzone strong').textContent ? 'new-upload.test' : 'new-upload.test';
-  const sev = document.getElementById('sev').value;
-  const rt = document.getElementById('rt').value;
+  const input = document.getElementById('file-input');
+  const file = input.files[0];
+  if (!file){ toast('Choose a binary file first'); return; }
+  const btn = document.getElementById('upload-btn');
+  btn.disabled = true;
+  const displayName = document.getElementById('test-name').value.trim();
+  if (!displayName){ toast('Enter a monitor name'); return; }
+  const fd = new FormData();
+  fd.append('name', displayName);
+  fd.append('binary', file);
+  fd.append('runtime', document.getElementById('rt').value);
+  fd.append('severity', document.getElementById('sev').value);
+  fd.append('timeout', document.getElementById('timeout').value);
+  const cmd = document.getElementById('command').value.trim();
+  if (cmd) fd.append('command', cmd);
   const cron = document.getElementById('cron').value.trim();
-  const hook = document.getElementById('hook').value.trim();
-  const id = (crypto.randomUUID ? crypto.randomUUID() : 'mock-' + Date.now());
-  TESTS.unshift({
-    id, name, runtime: rt, severity: sev,
-    schedule: cron || null, scheduleLabel: cron ? cron : 'manual only', nextRun: cron ? 'pending first run' : '—',
-    webhook: hook, failureThreshold: Number(document.getElementById('thresh').value)||1, consecutiveFailures:0,
-    lastStatus:'pending', lastRunAgo:'never', lastDurationMs:null, timeout:Number(document.getElementById('timeout').value)||30,
-    runs:[]
-  });
-  toast(`<strong>${esc(name)}</strong> uploaded ${cron ? `· scheduled ${esc(cron)}` : '· manual only'}`);
-  go('dashboard');
+  if (cron) fd.append('cron', cron);
+  try {
+    const res = await apiJson('/uploadBinary', { method: 'POST', body: fd });
+    toast(`<strong>${esc(displayName)}</strong> uploaded`);
+    await go('test', res.id);
+  } catch (err) {
+    toast(esc(err.message));
+    btn.disabled = false;
+  }
 }
 
-function render(){
-  if(state.view==='dashboard') renderDashboard();
-  else if(state.view==='upload') renderUpload();
-  else if(state.view==='test') renderTestDetail(state.testId);
-  else if(state.view==='run') renderRunDetail(state.testId, state.runId);
+async function render(){
+  try {
+    if (state.view === 'dashboard') await renderDashboard();
+    else if (state.view === 'upload') renderUpload();
+    else if (state.view === 'test') await renderTestDetail(state.testId);
+    else if (state.view === 'run') await renderRunDetail(state.testId, state.runId);
+  } catch (e) {
+    document.getElementById('main').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+    toast(esc(e.message));
+  }
 }
 render();
 </script>

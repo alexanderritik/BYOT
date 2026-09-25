@@ -15,6 +15,7 @@ import (
 	"github.com/alexanderritik/mini-lambda/repository"
 	"github.com/alexanderritik/mini-lambda/scheduler"
 	"github.com/alexanderritik/mini-lambda/storage"
+	"github.com/alexanderritik/mini-lambda/web"
 	"github.com/alexanderritik/mini-lambda/worker"
 	"github.com/google/uuid"
 
@@ -66,7 +67,8 @@ func main() {
 
 	q := queue.NewQueue(jobRepo)
 
-	handle := handler.NewHandler(store, testRepo, testRunRepo, q)
+	sched := scheduler.NewScheduler(testRepo, q, jobRepo, 30*time.Second)
+	handle := handler.NewHandler(store, testRepo, testRunRepo, q, sched)
 
 	// Create and start worker
 	workerID := uuid.NewString()
@@ -75,15 +77,20 @@ func main() {
 	defer cancel()
 
 	go w.Start(ctx)
-
-	sched := scheduler.NewScheduler(testRepo, q, jobRepo, 30*time.Second)
 	go sched.Start(ctx)
 
 	mux := http.NewServeMux()
+	web.Register(mux)
 	mux.HandleFunc("/health", handle.IsHealth)
 	mux.HandleFunc("/uploadBinary", handle.UploadBinary)
 	mux.HandleFunc("/run", handle.Run)
+	mux.HandleFunc("/stop", handle.Stop)
+	mux.HandleFunc("/scheduler/status", handle.SchedulerStatus)
+	mux.HandleFunc("/scheduler/stop", handle.SchedulerStop)
+	mux.HandleFunc("/scheduler/start", handle.SchedulerStart)
+	mux.HandleFunc("/tests", handle.Tests)
 	mux.HandleFunc("/tests/", handle.Tests)
+	mux.HandleFunc("/runs/", handle.RunRoutes)
 	mux.HandleFunc("/status/", handle.JobStatus)
 
 	server := &http.Server{
