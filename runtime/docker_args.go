@@ -22,8 +22,9 @@ func dockerRunArgs(workspace string, spec RuntimeSpec) []string {
 		fmt.Sprintf("%s:/app", workspace),
 		"-w",
 		"/app",
-		spec.Image,
+		"--entrypoint",
 		"sh",
+		spec.Image,
 		"-c",
 		command,
 	}

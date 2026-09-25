@@ -13,10 +13,9 @@ type Test struct {
 	Severity         string     `db:"severity"`
 	ArtifactKey      string     `db:"artifact_key"`
 	TimeoutSeconds   int        `db:"timeout_seconds"`
-	ScheduleCron     string     `db:"schedule_cron"`
-	ScheduleEnabled  bool       `db:"schedule_enabled"`
-	ScheduleTimezone string     `db:"schedule_timezone"`
-	NextRunAt        *time.Time `db:"next_run_at"`
+	ScheduleCron    string     `db:"schedule_cron"`
+	ScheduleEnabled bool       `db:"schedule_enabled"`
+	NextRunAt       *time.Time `db:"next_run_at"`
 	CreatedAt        time.Time  `db:"created_at"`
 }
 

@@ -5,13 +5,22 @@ import (
 	"time"
 
 	"github.com/alexanderritik/mini-lambda/model"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+type TestConfigUpdate struct {
+	Command         string
+	Severity        string
+	TimeoutSeconds  int
+	ScheduleCron    string
+	ScheduleEnabled bool
+	NextRunAt       *time.Time
+}
 
 type TestRepository interface {
 	Create(ctx context.Context, test *model.Test) error
 	GetByID(ctx context.Context, uuid string) (*model.Test, error)
+	UpdateConfig(ctx context.Context, testID string, cfg TestConfigUpdate) error
 	ListDueScheduled(ctx context.Context, now time.Time) ([]*model.Test, error)
 	UpdateNextRunAt(ctx context.Context, testID string, next time.Time) error
 }
@@ -28,8 +37,8 @@ func (r *postgresTestRepository) Create(ctx context.Context, test *model.Test) e
 	_, err := r.pool.Exec(ctx,
 		`INSERT INTO tests (
 			uuid, name, runtime, original_filename, severity, command, artifact_key, timeout_seconds,
-			schedule_cron, schedule_enabled, schedule_timezone, next_run_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+			schedule_cron, schedule_enabled, next_run_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
 		test.UUID,
 		test.Name,
 		test.Runtime,
@@ -40,7 +49,6 @@ func (r *postgresTestRepository) Create(ctx context.Context, test *model.Test) e
 		test.TimeoutSeconds,
 		nullIfEmpty(test.ScheduleCron),
 		test.ScheduleEnabled,
-		nullIfEmpty(test.ScheduleTimezone),
 		test.NextRunAt,
 	)
 	return err
@@ -54,26 +62,59 @@ func nullIfEmpty(s string) interface{} {
 }
 
 func (r *postgresTestRepository) GetByID(ctx context.Context, uuid string) (*model.Test, error) {
-	rows, err := r.pool.Query(ctx,
-		`SELECT uuid, name, runtime, original_filename, severity, command, artifact_key, created_at, timeout_seconds,
-		        schedule_cron, schedule_enabled, schedule_timezone, next_run_at
+	var test model.Test
+	err := r.pool.QueryRow(ctx,
+		`SELECT uuid::text, COALESCE(name, ''), runtime, original_filename, severity,
+		        COALESCE(command, ''), COALESCE(artifact_key, ''), created_at, timeout_seconds,
+		        COALESCE(schedule_cron, ''), schedule_enabled, next_run_at
 		 FROM tests WHERE uuid = $1`,
 		uuid,
+	).Scan(
+		&test.UUID,
+		&test.Name,
+		&test.Runtime,
+		&test.OriginalFilename,
+		&test.Severity,
+		&test.Command,
+		&test.ArtifactKey,
+		&test.CreatedAt,
+		&test.TimeoutSeconds,
+		&test.ScheduleCron,
+		&test.ScheduleEnabled,
+		&test.NextRunAt,
 	)
-	if err != nil {
-		return nil, err
-	}
-	test, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[model.Test])
 	if err != nil {
 		return nil, err
 	}
 	return &test, nil
 }
 
+func (r *postgresTestRepository) UpdateConfig(ctx context.Context, testID string, cfg TestConfigUpdate) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE tests SET
+			command = $1,
+			severity = $2,
+			timeout_seconds = $3,
+			schedule_cron = $4,
+			schedule_enabled = $5,
+			next_run_at = $6
+		 WHERE uuid = $7`,
+		cfg.Command,
+		cfg.Severity,
+		cfg.TimeoutSeconds,
+		nullIfEmpty(cfg.ScheduleCron),
+		cfg.ScheduleEnabled,
+		cfg.NextRunAt,
+		testID,
+	)
+	return err
+}
+
 func (r *postgresTestRepository) ListDueScheduled(ctx context.Context, now time.Time) ([]*model.Test, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT uuid, name, runtime, original_filename, severity, command, artifact_key, created_at, timeout_seconds,
-		        schedule_cron, schedule_enabled, schedule_timezone, next_run_at
+		`SELECT uuid::text, COALESCE(name, ''), runtime, original_filename, severity,
+		        COALESCE(command, ''), COALESCE(artifact_key, ''), created_at, timeout_seconds,
+		        COALESCE(schedule_cron, ''), schedule_enabled, next_run_at
 		 FROM tests
 		 WHERE schedule_enabled = true
 		   AND schedule_cron IS NOT NULL
@@ -86,17 +127,30 @@ func (r *postgresTestRepository) ListDueScheduled(ctx context.Context, now time.
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 
-	tests, err := pgx.CollectRows(rows, pgx.RowToStructByName[model.Test])
-	if err != nil {
-		return nil, err
+	var out []*model.Test
+	for rows.Next() {
+		var test model.Test
+		if err := rows.Scan(
+			&test.UUID,
+			&test.Name,
+			&test.Runtime,
+			&test.OriginalFilename,
+			&test.Severity,
+			&test.Command,
+			&test.ArtifactKey,
+			&test.CreatedAt,
+			&test.TimeoutSeconds,
+			&test.ScheduleCron,
+			&test.ScheduleEnabled,
+			&test.NextRunAt,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, &test)
 	}
-
-	out := make([]*model.Test, len(tests))
-	for i := range tests {
-		out[i] = &tests[i]
-	}
-	return out, nil
+	return out, rows.Err()
 }
 
 func (r *postgresTestRepository) UpdateNextRunAt(ctx context.Context, testID string, next time.Time) error {

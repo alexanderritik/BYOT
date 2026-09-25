@@ -1,3 +1,25 @@
+// Package scheduler implements the control-plane cron loop.
+//
+// It does not execute tests. It only enqueues jobs when a test is due.
+// Execution is always handled by worker.Worker (same path as POST /run).
+//
+// Lifecycle
+//
+//  1. Upload (handler.UploadBinary): if form field "cron" is set,
+//     schedule_enabled=true and next_run_at is computed (UTC, schedule.NextRun).
+//
+//  2. Start (main): Scheduler runs in a goroutine with a 30s ticker.
+//
+//  3. tick: ListDueScheduled(now) → tests where next_run_at <= now.
+//
+//  4. fire (per due test):
+//     a. next := NextRun(cron, now); UpdateNextRunAt(test, next)
+//     b. if HasActiveJob(test) → skip enqueue (overlap forbid)
+//     c. queue.Enqueue(testID, trigger=scheduled)
+//
+//  5. worker: Dequeue → executeJob → tests_runs + jobs completed/failed.
+//
+// Manual runs use queue.Enqueue(..., trigger=manual) from handler.Run only.
 package scheduler
 
 import (
@@ -66,7 +88,7 @@ func (s *Scheduler) tick(ctx context.Context) {
 }
 
 func (s *Scheduler) fire(ctx context.Context, test *model.Test, now time.Time) {
-	next, err := schedule.NextRun(test.ScheduleCron, test.ScheduleTimezone, now)
+	next, err := schedule.NextRun(test.ScheduleCron, now)
 	if err != nil {
 		log.Error().Err(err).Str("test_id", test.UUID).Msg("scheduler: invalid cron")
 		return

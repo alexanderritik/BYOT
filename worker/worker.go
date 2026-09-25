@@ -98,6 +98,9 @@ func (w *Worker) executeJob(ctx context.Context, job *model.Job) error {
 		return err
 	}
 	defer os.RemoveAll(workspace)
+	if err := os.Chmod(workspace, 0755); err != nil {
+		return err
+	}
 
 	artifactPath := filepath.Join(workspace, "artifact")
 	dst, err := os.OpenFile(artifactPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)

@@ -7,7 +7,7 @@ import (
 
 func TestNextRun_UTC(t *testing.T) {
 	from := time.Date(2026, 9, 25, 10, 0, 0, 0, time.UTC)
-	next, err := NextRun("*/15 * * * *", "", from)
+	next, err := NextRun("*/15 * * * *", from)
 	if err != nil {
 		t.Fatal(err)
 	}

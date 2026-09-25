@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/alexanderritik/mini-lambda/model"
@@ -82,25 +83,121 @@ func (hl *Handler) JobStatus(h http.ResponseWriter, r *http.Request) {
 	jsonResponse(h, http.StatusOK, response)
 }
 
-func (hl *Handler) GetTest(h http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		jsonResponse(h, http.StatusMethodNotAllowed, map[string]string{"error": "GET only"})
+// Tests routes GET /tests/{id} and PATCH /tests/{id}/config.
+func (hl *Handler) Tests(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/tests/")
+	path = strings.Trim(path, "/")
+	if path == "" {
+		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "test ID is missing"})
 		return
 	}
 
-	testID := r.URL.Path[len("/tests/"):]
-	if testID == "" {
-		jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "test ID is missing"})
+	if strings.HasSuffix(path, "/config") {
+		testID := strings.TrimSuffix(path, "/config")
+		testID = strings.TrimSuffix(testID, "/")
+		if testID == "" {
+			jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "test ID is missing"})
+			return
+		}
+		hl.updateTestConfig(w, r, testID)
+		return
+	}
+
+	if r.Method != http.MethodGet {
+		jsonResponse(w, http.StatusMethodNotAllowed, map[string]string{"error": "GET or PATCH /tests/{id}/config only"})
+		return
+	}
+
+	test, err := hl.test.GetByID(r.Context(), path)
+	if err != nil {
+		jsonResponse(w, http.StatusNotFound, map[string]string{"error": "test not found"})
+		return
+	}
+	jsonResponse(w, http.StatusOK, test)
+}
+
+type UpdateTestConfigRequest struct {
+	Command         *string `json:"command"`
+	Severity        *string `json:"severity"`
+	TimeoutSeconds  *int    `json:"timeout_seconds"`
+	Cron            *string `json:"cron"`
+	ScheduleEnabled *bool   `json:"schedule_enabled"`
+}
+
+func (hl *Handler) updateTestConfig(w http.ResponseWriter, r *http.Request, testID string) {
+	if r.Method != http.MethodPatch && r.Method != http.MethodPut {
+		jsonResponse(w, http.StatusMethodNotAllowed, map[string]string{"error": "PATCH or PUT only"})
+		return
+	}
+
+	var req UpdateTestConfigRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 		return
 	}
 
 	test, err := hl.test.GetByID(r.Context(), testID)
 	if err != nil {
-		jsonResponse(h, http.StatusNotFound, map[string]string{"error": "test not found"})
+		jsonResponse(w, http.StatusNotFound, map[string]string{"error": "test not found"})
 		return
 	}
 
-	jsonResponse(h, http.StatusOK, test)
+	if req.Command != nil {
+		test.Command = *req.Command
+	}
+	if req.Severity != nil {
+		test.Severity = *req.Severity
+	}
+	if req.TimeoutSeconds != nil {
+		if *req.TimeoutSeconds <= 0 {
+			jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "timeout_seconds must be positive"})
+			return
+		}
+		test.TimeoutSeconds = *req.TimeoutSeconds
+	}
+	if req.Cron != nil {
+		test.ScheduleCron = *req.Cron
+	}
+	if req.ScheduleEnabled != nil {
+		test.ScheduleEnabled = *req.ScheduleEnabled
+	}
+
+	var nextRun *time.Time
+	if test.ScheduleEnabled {
+		if test.ScheduleCron == "" {
+			jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "cron is required when schedule is enabled"})
+			return
+		}
+		next, err := schedule.NextRun(test.ScheduleCron, time.Now().UTC())
+		if err != nil {
+			jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "invalid cron expression"})
+			return
+		}
+		nextRun = &next
+	} else {
+		test.ScheduleCron = ""
+		nextRun = nil
+	}
+
+	cfg := repository.TestConfigUpdate{
+		Command:         test.Command,
+		Severity:        test.Severity,
+		TimeoutSeconds:  test.TimeoutSeconds,
+		ScheduleCron:    test.ScheduleCron,
+		ScheduleEnabled: test.ScheduleEnabled,
+		NextRunAt:       nextRun,
+	}
+	if err := hl.test.UpdateConfig(r.Context(), testID, cfg); err != nil {
+		jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": "failed to update test config"})
+		return
+	}
+
+	updated, err := hl.test.GetByID(r.Context(), testID)
+	if err != nil {
+		jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": "failed to load updated test"})
+		return
+	}
+	jsonResponse(w, http.StatusOK, updated)
 }
 
 func (hl *Handler) Run(h http.ResponseWriter, r *http.Request) {
@@ -162,8 +259,6 @@ func (hl *Handler) UploadBinary(h http.ResponseWriter, r *http.Request) {
 	if err != nil || timeout == 0 {
 		timeout = 30 // default
 	}
-	scheduleCron := r.FormValue("cron")
-	scheduleTZ := r.FormValue("schedule_timezone")
 	if runtime == "" || severity == "" || command == "" {
 		logger.Error().Msg("We required Runtime, Severity, and Command in input.")
 		jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "required Runtime, Severity, and Command in input"})
@@ -208,19 +303,7 @@ func (hl *Handler) UploadBinary(h http.ResponseWriter, r *http.Request) {
 		Command:          command,
 		Severity:         severity,
 		ArtifactKey:      dst,
-		TimeoutSeconds:   timeout,
-		ScheduleCron:     scheduleCron,
-		ScheduleTimezone: scheduleTZ,
-	}
-
-	if scheduleCron != "" {
-		test.ScheduleEnabled = true
-		next, err := schedule.NextRun(scheduleCron, scheduleTZ, time.Now().UTC())
-		if err != nil {
-			jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "invalid cron or timezone"})
-			return
-		}
-		test.NextRunAt = &next
+		TimeoutSeconds: timeout,
 	}
 	if err := hl.test.Create(r.Context(), test); err != nil {
 		jsonResponse(h, http.StatusInternalServerError, map[string]string{

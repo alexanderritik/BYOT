@@ -83,7 +83,7 @@ func main() {
 	mux.HandleFunc("/health", handle.IsHealth)
 	mux.HandleFunc("/uploadBinary", handle.UploadBinary)
 	mux.HandleFunc("/run", handle.Run)
-	mux.HandleFunc("/tests/", handle.GetTest)
+	mux.HandleFunc("/tests/", handle.Tests)
 	mux.HandleFunc("/status/", handle.JobStatus)
 
 	server := &http.Server{
