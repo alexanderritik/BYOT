@@ -13,26 +13,36 @@ import (
 )
 
 type RuntimeSpec struct {
-	Image   string
-	Command string
+	Image          string
+	Command        string
+	NetworkEnabled bool
 }
 
 var runtimes = map[string]RuntimeSpec{
 	"node": {
-		Image:   "node:18-alpine",
-		Command: "node ./artifact",
+		Image:          "node:18-alpine",
+		Command:        "node ./artifact",
+		NetworkEnabled: false,
 	},
 	"go": {
-		Image:   "golang:1.24-alpine",
-		Command: "./artifact",
+		Image:          "golang:1.24-alpine",
+		Command:        "./artifact",
+		NetworkEnabled: false,
 	},
 	"python": {
-		Image:   "python:3.12-alpine",
-		Command: "python ./artifact",
+		Image:          "python:3.12-alpine",
+		Command:        "python ./artifact",
+		NetworkEnabled: false,
 	},
 	"k6": {
-		Image:   "grafana/k6:latest",
-		Command: "k6 run ./artifact",
+		Image:          "grafana/k6:latest",
+		Command:        "k6 run ./artifact",
+		NetworkEnabled: true,
+	},
+	"playwright": {
+		Image:          "mcr.microsoft.com/playwright:v1.49.1-jammy",
+		Command:        "npx playwright test",
+		NetworkEnabled: true,
 	},
 }
 
@@ -51,24 +61,8 @@ func Execute(
 	spec RuntimeSpec,
 	timeout time.Duration,
 ) (Result, error) {
-	command := strings.ReplaceAll(spec.Command, "./binary", "./artifact")
-
-	args := []string{
-		"run",
-		"--rm",
-		"--network=none",
-		"--memory=512m",
-		"--cpus=1",
-		"--pids-limit=128",
-		"-v",
-		fmt.Sprintf("%s:/app", workspace),
-		"-w",
-		"/app",
-		spec.Image,
-		"sh",
-		"-c",
-		command,
-	}
+	spec.Command = strings.ReplaceAll(spec.Command, "./binary", "./artifact")
+	args := dockerRunArgs(workspace, spec)
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()

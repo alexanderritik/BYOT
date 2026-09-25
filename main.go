@@ -13,6 +13,7 @@ import (
 	"github.com/alexanderritik/mini-lambda/handler"
 	"github.com/alexanderritik/mini-lambda/queue"
 	"github.com/alexanderritik/mini-lambda/repository"
+	"github.com/alexanderritik/mini-lambda/scheduler"
 	"github.com/alexanderritik/mini-lambda/storage"
 	"github.com/alexanderritik/mini-lambda/worker"
 	"github.com/google/uuid"
@@ -75,11 +76,14 @@ func main() {
 
 	go w.Start(ctx)
 
-	// pass store to handler
+	sched := scheduler.NewScheduler(testRepo, q, jobRepo, 30*time.Second)
+	go sched.Start(ctx)
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", handle.IsHealth)
-	mux.HandleFunc("/uploadBinary", handle.UploadBinary) // needs store
+	mux.HandleFunc("/uploadBinary", handle.UploadBinary)
 	mux.HandleFunc("/run", handle.Run)
+	mux.HandleFunc("/tests/", handle.GetTest)
 	mux.HandleFunc("/status/", handle.JobStatus)
 
 	server := &http.Server{

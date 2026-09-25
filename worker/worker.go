@@ -122,8 +122,9 @@ func (w *Worker) executeJob(ctx context.Context, job *model.Job) error {
 		command = baseSpec.Command
 	}
 	spec := runtime.RuntimeSpec{
-		Image:   baseSpec.Image,
-		Command: command,
+		Image:          baseSpec.Image,
+		Command:        command,
+		NetworkEnabled: baseSpec.NetworkEnabled,
 	}
 
 	timeout := time.Duration(test.TimeoutSeconds) * time.Second

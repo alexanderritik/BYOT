@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/alexanderritik/mini-lambda/model"
 	"github.com/alexanderritik/mini-lambda/queue"
 	"github.com/alexanderritik/mini-lambda/repository"
+	"github.com/alexanderritik/mini-lambda/schedule"
 	"github.com/alexanderritik/mini-lambda/storage"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
@@ -67,6 +69,7 @@ func (hl *Handler) JobStatus(h http.ResponseWriter, r *http.Request) {
 		"job_id":      job.UUID,
 		"test_id":     job.TestID,
 		"status":      job.Status,
+		"trigger":     job.Trigger,
 		"queued_at":   job.QueuedAt,
 		"started_at":  job.StartedAt,
 		"finished_at": job.FinishedAt,
@@ -77,6 +80,27 @@ func (hl *Handler) JobStatus(h http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonResponse(h, http.StatusOK, response)
+}
+
+func (hl *Handler) GetTest(h http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		jsonResponse(h, http.StatusMethodNotAllowed, map[string]string{"error": "GET only"})
+		return
+	}
+
+	testID := r.URL.Path[len("/tests/"):]
+	if testID == "" {
+		jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "test ID is missing"})
+		return
+	}
+
+	test, err := hl.test.GetByID(r.Context(), testID)
+	if err != nil {
+		jsonResponse(h, http.StatusNotFound, map[string]string{"error": "test not found"})
+		return
+	}
+
+	jsonResponse(h, http.StatusOK, test)
 }
 
 func (hl *Handler) Run(h http.ResponseWriter, r *http.Request) {
@@ -107,7 +131,7 @@ func (hl *Handler) Run(h http.ResponseWriter, r *http.Request) {
 	logger.Info().Str("runtime", testRes.Runtime).Msg("function execution requested")
 
 	// Enqueue job instead of executing synchronously
-	job, err := hl.queue.Enqueue(r.Context(), testRes.UUID)
+	job, err := hl.queue.Enqueue(r.Context(), testRes.UUID, queue.TriggerManual)
 	if err != nil {
 		jsonResponse(h, http.StatusInternalServerError, map[string]string{"error": "failed to enqueue job"})
 		return
@@ -138,6 +162,8 @@ func (hl *Handler) UploadBinary(h http.ResponseWriter, r *http.Request) {
 	if err != nil || timeout == 0 {
 		timeout = 30 // default
 	}
+	scheduleCron := r.FormValue("cron")
+	scheduleTZ := r.FormValue("schedule_timezone")
 	if runtime == "" || severity == "" || command == "" {
 		logger.Error().Msg("We required Runtime, Severity, and Command in input.")
 		jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "required Runtime, Severity, and Command in input"})
@@ -183,6 +209,18 @@ func (hl *Handler) UploadBinary(h http.ResponseWriter, r *http.Request) {
 		Severity:         severity,
 		ArtifactKey:      dst,
 		TimeoutSeconds:   timeout,
+		ScheduleCron:     scheduleCron,
+		ScheduleTimezone: scheduleTZ,
+	}
+
+	if scheduleCron != "" {
+		test.ScheduleEnabled = true
+		next, err := schedule.NextRun(scheduleCron, scheduleTZ, time.Now().UTC())
+		if err != nil {
+			jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "invalid cron or timezone"})
+			return
+		}
+		test.NextRunAt = &next
 	}
 	if err := hl.test.Create(r.Context(), test); err != nil {
 		jsonResponse(h, http.StatusInternalServerError, map[string]string{

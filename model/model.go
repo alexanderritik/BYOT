@@ -5,16 +5,21 @@ import (
 )
 
 type Test struct {
-	UUID             string    `db:"uuid"`
-	Name             string    `db:"name"`
-	OriginalFilename string    `db:"original_filename"`
-	Runtime          string    `db:"runtime"`
-	Command          string    `db:"command"`
-	Severity         string    `db:"severity"`
-	ArtifactKey      string    `db:"artifact_key"`
-	TimeoutSeconds   int       `db:"timeout_seconds"`
-	CreatedAt        time.Time `db:"created_at"`
+	UUID             string     `db:"uuid"`
+	Name             string     `db:"name"`
+	OriginalFilename string     `db:"original_filename"`
+	Runtime          string     `db:"runtime"`
+	Command          string     `db:"command"`
+	Severity         string     `db:"severity"`
+	ArtifactKey      string     `db:"artifact_key"`
+	TimeoutSeconds   int        `db:"timeout_seconds"`
+	ScheduleCron     string     `db:"schedule_cron"`
+	ScheduleEnabled  bool       `db:"schedule_enabled"`
+	ScheduleTimezone string     `db:"schedule_timezone"`
+	NextRunAt        *time.Time `db:"next_run_at"`
+	CreatedAt        time.Time  `db:"created_at"`
 }
+
 type TestRun struct {
 	UUID         string    `db:"uuid"`
 	TestID       string    `db:"test_id"`
@@ -30,6 +35,7 @@ type Job struct {
 	UUID         string     `db:"uuid"`
 	TestID       string     `db:"test_id"`
 	Status       string     `db:"status"`
+	Trigger      string     `db:"trigger"`
 	QueuedAt     time.Time  `db:"queued_at"`
 	StartedAt    *time.Time `db:"started_at"`
 	FinishedAt   *time.Time `db:"finished_at"`

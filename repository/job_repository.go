@@ -2,8 +2,10 @@ package repository
 
 import (
 	"context"
+	"errors"
 
 	"github.com/alexanderritik/mini-lambda/model"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -17,16 +19,27 @@ func NewJobRepository(pool *pgxpool.Pool) *JobRepository {
 
 func (r *JobRepository) Create(ctx context.Context, job *model.Job) error {
 	query := `
-		INSERT INTO jobs (uuid, test_id, status, queued_at)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO jobs (uuid, test_id, status, queued_at, trigger)
+		VALUES ($1, $2, $3, $4, $5)
 	`
-	_, err := r.pool.Exec(ctx, query, job.UUID, job.TestID, job.Status, job.QueuedAt)
+	_, err := r.pool.Exec(ctx, query, job.UUID, job.TestID, job.Status, job.QueuedAt, job.Trigger)
 	return err
+}
+
+func (r *JobRepository) HasActiveJob(ctx context.Context, testID string) (bool, error) {
+	var exists bool
+	err := r.pool.QueryRow(ctx,
+		`SELECT EXISTS(
+			SELECT 1 FROM jobs WHERE test_id = $1 AND status IN ('queued', 'running')
+		)`,
+		testID,
+	).Scan(&exists)
+	return exists, err
 }
 
 func (r *JobRepository) GetByID(ctx context.Context, id string) (*model.Job, error) {
 	query := `
-		SELECT uuid, test_id, status, queued_at, started_at, finished_at, worker_id, error_message
+		SELECT uuid, test_id, status, trigger, queued_at, started_at, finished_at, worker_id, error_message
 		FROM jobs WHERE uuid = $1
 	`
 	row := r.pool.QueryRow(ctx, query, id)
@@ -36,6 +49,7 @@ func (r *JobRepository) GetByID(ctx context.Context, id string) (*model.Job, err
 		&job.UUID,
 		&job.TestID,
 		&job.Status,
+		&job.Trigger,
 		&job.QueuedAt,
 		&job.StartedAt,
 		&job.FinishedAt,
@@ -61,7 +75,7 @@ func (r *JobRepository) Dequeue(ctx context.Context, workerID string) (*model.Jo
 			FOR UPDATE SKIP LOCKED
 			LIMIT 1
 		)
-		RETURNING uuid, test_id, status, queued_at, started_at, finished_at, worker_id, error_message
+		RETURNING uuid, test_id, status, trigger, queued_at, started_at, finished_at, worker_id, error_message
 	`
 
 	row := r.pool.QueryRow(ctx, query, workerID)
@@ -71,6 +85,7 @@ func (r *JobRepository) Dequeue(ctx context.Context, workerID string) (*model.Jo
 		&job.UUID,
 		&job.TestID,
 		&job.Status,
+		&job.Trigger,
 		&job.QueuedAt,
 		&job.StartedAt,
 		&job.FinishedAt,
@@ -78,6 +93,9 @@ func (r *JobRepository) Dequeue(ctx context.Context, workerID string) (*model.Jo
 		&job.ErrorMessage,
 	)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return &job, nil
@@ -97,7 +115,7 @@ func (r *JobRepository) UpdateStatus(ctx context.Context, jobID string, status s
 
 func (r *JobRepository) ListByTestID(ctx context.Context, testID string) ([]*model.Job, error) {
 	query := `
-		SELECT uuid, test_id, status, queued_at, started_at, finished_at, worker_id, error_message
+		SELECT uuid, test_id, status, trigger, queued_at, started_at, finished_at, worker_id, error_message
 		FROM jobs WHERE test_id = $1
 		ORDER BY queued_at DESC
 	`
@@ -114,6 +132,7 @@ func (r *JobRepository) ListByTestID(ctx context.Context, testID string) ([]*mod
 			&job.UUID,
 			&job.TestID,
 			&job.Status,
+			&job.Trigger,
 			&job.QueuedAt,
 			&job.StartedAt,
 			&job.FinishedAt,
