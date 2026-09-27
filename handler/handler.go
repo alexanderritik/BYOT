@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alexanderritik/mini-lambda/config"
 	"github.com/alexanderritik/mini-lambda/model"
 	"github.com/alexanderritik/mini-lambda/queue"
 	"github.com/alexanderritik/mini-lambda/repository"
@@ -18,7 +19,10 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-const maxFileSize = 10 << 20
+const (
+	maxFileSize   = 10 << 20
+	maxBundleSize = 200 << 20 // playwright zip with bundled node_modules
+)
 
 type Handler struct {
 	storage     storage.Storage
@@ -26,15 +30,17 @@ type Handler struct {
 	testRunRepo repository.TestRunRepository
 	queue       *queue.Queue
 	scheduler   *scheduler.Scheduler
+	config      config.Config
 }
 
-func NewHandler(storage storage.Storage, test repository.TestRepository, testRun repository.TestRunRepository, q *queue.Queue, sched *scheduler.Scheduler) *Handler {
+func NewHandler(storage storage.Storage, test repository.TestRepository, testRun repository.TestRunRepository, q *queue.Queue, sched *scheduler.Scheduler, cfg config.Config) *Handler {
 	return &Handler{
 		storage:     storage,
 		test:        test,
 		testRunRepo: testRun,
 		queue:       q,
 		scheduler:   sched,
+		config:      cfg,
 	}
 }
 
@@ -57,8 +63,12 @@ func (hl *Handler) IsHealth(h http.ResponseWriter, r *http.Request) {
 	jsonResponse(h, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+// Get status of testId which ran
 func (hl *Handler) JobStatus(h http.ResponseWriter, r *http.Request) {
-	jobID := r.URL.Path[len("/status/"):]
+	const statusPrefix = "/status/"
+
+	jobID := strings.TrimPrefix(r.URL.Path, statusPrefix)
+	jobID = strings.Trim(jobID, "/")
 	if jobID == "" {
 		jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "job ID is missing"})
 		return
@@ -70,7 +80,7 @@ func (hl *Handler) JobStatus(h http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"job_id":      job.UUID,
 		"test_id":     job.TestID,
 		"status":      job.Status,
@@ -240,14 +250,16 @@ func (hl *Handler) RunRoutes(w http.ResponseWriter, r *http.Request) {
 }
 
 type UpdateTestConfigRequest struct {
-	Command         *string `json:"command"`
-	Severity        *string `json:"severity"`
-	TimeoutSeconds  *int    `json:"timeout_seconds"`
-	Cron               *string `json:"cron"`
-	ScheduleEnabled    *bool   `json:"schedule_enabled"`
-	WebhookURL         *string `json:"webhook_url"`
-	FailureThreshold   *int    `json:"failure_threshold"`
-	AlertsEnabled      *bool   `json:"alerts_enabled"`
+	Command              *string  `json:"command"`
+	TimeoutSeconds       *int     `json:"timeout_seconds"`
+	Cron                 *string  `json:"cron"`
+	ScheduleEnabled      *bool    `json:"schedule_enabled"`
+	WebhookURL           *string  `json:"webhook_url"`
+	FailureThreshold     *int     `json:"failure_threshold"`
+	AlertsEnabled        *bool    `json:"alerts_enabled"`
+	DockerMemoryMB       *int     `json:"docker_memory_mb"`
+	DockerCPUs           *float64 `json:"docker_cpus"`
+	DockerNetworkEnabled *bool    `json:"docker_network_enabled"`
 }
 
 func (hl *Handler) updateTestConfig(w http.ResponseWriter, r *http.Request, testID string) {
@@ -270,9 +282,6 @@ func (hl *Handler) updateTestConfig(w http.ResponseWriter, r *http.Request, test
 
 	if req.Command != nil {
 		test.Command = *req.Command
-	}
-	if req.Severity != nil {
-		test.Severity = *req.Severity
 	}
 	if req.TimeoutSeconds != nil {
 		if *req.TimeoutSeconds <= 0 {
@@ -300,6 +309,31 @@ func (hl *Handler) updateTestConfig(w http.ResponseWriter, r *http.Request, test
 	if req.AlertsEnabled != nil {
 		test.AlertsEnabled = *req.AlertsEnabled
 	}
+	if req.DockerMemoryMB != nil {
+		if *req.DockerMemoryMB < 0 {
+			jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "docker_memory_mb must be non-negative"})
+			return
+		}
+		if *req.DockerMemoryMB > hl.config.MaxDockerMemoryMB {
+			jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "docker_memory_mb exceeds maximum limit"})
+			return
+		}
+		test.DockerMemoryMB = req.DockerMemoryMB
+	}
+	if req.DockerCPUs != nil {
+		if *req.DockerCPUs < 0 {
+			jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "docker_cpus must be non-negative"})
+			return
+		}
+		if *req.DockerCPUs > hl.config.MaxDockerCPUs {
+			jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "docker_cpus exceeds maximum limit"})
+			return
+		}
+		test.DockerCPUs = req.DockerCPUs
+	}
+	if req.DockerNetworkEnabled != nil {
+		test.DockerNetworkEnabled = req.DockerNetworkEnabled
+	}
 	if test.FailureThreshold <= 0 {
 		test.FailureThreshold = 3
 	}
@@ -322,15 +356,17 @@ func (hl *Handler) updateTestConfig(w http.ResponseWriter, r *http.Request, test
 	}
 
 	cfg := repository.TestConfigUpdate{
-		Command:          test.Command,
-		Severity:         test.Severity,
-		TimeoutSeconds:   test.TimeoutSeconds,
-		ScheduleCron:     test.ScheduleCron,
-		ScheduleEnabled:  test.ScheduleEnabled,
-		NextRunAt:        nextRun,
-		WebhookURL:       test.WebhookURL,
-		FailureThreshold: test.FailureThreshold,
-		AlertsEnabled:    test.AlertsEnabled,
+		Command:              test.Command,
+		TimeoutSeconds:       test.TimeoutSeconds,
+		ScheduleCron:         test.ScheduleCron,
+		ScheduleEnabled:      test.ScheduleEnabled,
+		NextRunAt:            nextRun,
+		WebhookURL:           test.WebhookURL,
+		FailureThreshold:     test.FailureThreshold,
+		AlertsEnabled:        test.AlertsEnabled,
+		DockerMemoryMB:       test.DockerMemoryMB,
+		DockerCPUs:           test.DockerCPUs,
+		DockerNetworkEnabled: test.DockerNetworkEnabled,
 	}
 	if err := hl.test.UpdateConfig(r.Context(), testID, cfg); err != nil {
 		jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": "failed to update test config"})
@@ -400,12 +436,11 @@ func (hl *Handler) UploadBinary(h http.ResponseWriter, r *http.Request) {
 		jsonResponse(h, http.StatusMethodNotAllowed, map[string]string{"error": "POST only accepted"})
 		return
 	}
-	if err := r.ParseMultipartForm(maxFileSize); err != nil {
+	if err := r.ParseMultipartForm(maxBundleSize); err != nil {
 		jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "invalid multipart form"})
 		return
 	}
 	runtime := r.FormValue("runtime")
-	severity := r.FormValue("severity")
 	command := r.FormValue("command")
 	cron := strings.TrimSpace(r.FormValue("cron"))
 	webhookURL := strings.TrimSpace(r.FormValue("webhook_url"))
@@ -418,14 +453,49 @@ func (hl *Handler) UploadBinary(h http.ResponseWriter, r *http.Request) {
 		}
 		failureThreshold = v
 	}
+
+	var dockerMemoryMB *int
+	if dm := strings.TrimSpace(r.FormValue("docker_memory_mb")); dm != "" {
+		v, err := strconv.Atoi(dm)
+		if err != nil || v < 0 {
+			jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "docker_memory_mb must be a non-negative integer"})
+			return
+		}
+		if v > hl.config.MaxDockerMemoryMB {
+			jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "docker_memory_mb exceeds maximum limit"})
+			return
+		}
+		dockerMemoryMB = &v
+	}
+
+	var dockerCPUs *float64
+	if dc := strings.TrimSpace(r.FormValue("docker_cpus")); dc != "" {
+		v, err := strconv.ParseFloat(dc, 64)
+		if err != nil || v < 0 {
+			jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "docker_cpus must be a non-negative number"})
+			return
+		}
+		if v > hl.config.MaxDockerCPUs {
+			jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "docker_cpus exceeds maximum limit"})
+			return
+		}
+		dockerCPUs = &v
+	}
+
+	var dockerNetworkEnabled *bool
+	if dn := strings.TrimSpace(r.FormValue("docker_network_enabled")); dn != "" {
+		v := dn == "true"
+		dockerNetworkEnabled = &v
+	}
+
 	displayName := strings.TrimSpace(r.FormValue("name"))
 	timeoutStr := r.FormValue("timeout")
 	timeout, err := strconv.Atoi(timeoutStr)
 	if err != nil || timeout == 0 {
 		timeout = 30 // default
 	}
-	if runtime == "" || severity == "" {
-		jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "runtime and severity are required"})
+	if runtime == "" {
+		jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "runtime is required"})
 		return
 	}
 
@@ -444,7 +514,16 @@ func (hl *Handler) UploadBinary(h http.ResponseWriter, r *http.Request) {
 
 	logger.Info().Msg("binary upload requested")
 
-	if header.Size >= maxFileSize {
+	sizeLimit := int64(maxFileSize)
+	if runtime == "playwright" {
+		sizeLimit = int64(maxBundleSize)
+		if !strings.HasSuffix(strings.ToLower(header.Filename), ".zip") {
+			jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "playwright runtime requires a .zip project bundle"})
+			return
+		}
+	}
+
+	if header.Size >= sizeLimit {
 		logger.Warn().Msg("file too large, rejected")
 		jsonResponse(h, http.StatusRequestEntityTooLarge, map[string]string{"error": "file too large"})
 		return
@@ -466,17 +545,19 @@ func (hl *Handler) UploadBinary(h http.ResponseWriter, r *http.Request) {
 	}
 
 	test := &model.Test{
-		UUID:             fileName,
-		Name:             testName,
-		OriginalFilename: header.Filename,
-		Runtime:          runtime,
-		Command:          command,
-		Severity:         severity,
-		ArtifactKey:      dst,
-		TimeoutSeconds:   timeout,
-		WebhookURL:       webhookURL,
-		FailureThreshold: failureThreshold,
-		AlertsEnabled:    true,
+		UUID:                 fileName,
+		Name:                 testName,
+		OriginalFilename:     header.Filename,
+		Runtime:              runtime,
+		Command:              command,
+		ArtifactKey:          dst,
+		TimeoutSeconds:       timeout,
+		WebhookURL:           webhookURL,
+		FailureThreshold:     failureThreshold,
+		AlertsEnabled:        true,
+		DockerMemoryMB:       dockerMemoryMB,
+		DockerCPUs:           dockerCPUs,
+		DockerNetworkEnabled: dockerNetworkEnabled,
 	}
 	if cron != "" {
 		next, err := schedule.NextRun(cron, time.Now().UTC())

@@ -395,13 +395,12 @@ async function renderDashboard(){
       <td>${statusPill(st)}</td>
       <td><div class="tname">${esc(t.name)}</div><div class="tid mono">${shortId(t.uuid)}</div></td>
       <td>${runtimeBadge(t.runtime)}</td>
-      <td>${sevPill(t.severity)}</td>
       <td class="mono">${esc(sched)}${next ? `<div class="tid">next ${esc(next)}</div>` : ''}</td>
       <td>${lr ? `${timeAgo(lr.started_at)}<div class="tid">${lr.duration_ms} ms</div>` : '—'}</td>
       <td class="tid">${alertLabel(t)}</td>
       <td style="text-align:right">${actionButtons(t.uuid)}</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="8" class="empty">No tests yet — upload your first binary.</td></tr>`;
+  }).join('') || `<tr><td colspan="7" class="empty">No tests yet — upload your first binary.</td></tr>`;
 
   document.getElementById('main').innerHTML = `
     <div class="page-head">
@@ -418,7 +417,7 @@ async function renderDashboard(){
       <div class="stat warn"><div class="stat-n">${alertsConfiguredCount()}</div><div class="stat-l">webhooks configured</div></div>
     </div>
     <div class="panel"><div class="twrap"><table>
-      <thead><tr><th>Status</th><th>Test</th><th>Runtime</th><th>Severity</th><th>Schedule</th><th>Last run</th><th>Alerts</th><th></th></tr></thead>
+      <thead><tr><th>Status</th><th>Test</th><th>Runtime</th><th>Schedule</th><th>Last run</th><th>Alerts</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div></div>`;
 }
@@ -459,7 +458,7 @@ async function renderTestDetail(id){
     <div class="page-head">
       <div>
         <h1>${esc(t.name)}</h1>
-        <p class="sub">${statusPill(st)} &nbsp;·&nbsp; ${sevPill(t.severity)} &nbsp;·&nbsp; ${runtimeBadge(t.runtime)}</p>
+        <p class="sub">${statusPill(st)} &nbsp;·&nbsp; ${runtimeBadge(t.runtime)}</p>
       </div>
       <div class="btn-row">${actionButtons(t.uuid, '')}</div>
     </div>
@@ -471,8 +470,38 @@ async function renderTestDetail(id){
         <div><span class="kv-k">Command</span><span class="kv-v">${cmd}</span></div>
         <div><span class="kv-k">Timeout</span><span class="kv-v">${t.timeout_seconds}s</span></div>
         <div><span class="kv-k">Alert state</span><span class="kv-v">${esc(alertState)}</span></div>
+        <div><span class="kv-k">Docker Memory</span><span class="kv-v">${t.docker_memory_mb ? t.docker_memory_mb + ' MB' : 'Default'}</span></div>
+        <div><span class="kv-k">Docker CPUs</span><span class="kv-v">${t.docker_cpus !== null && t.docker_cpus !== undefined ? t.docker_cpus : 'Default'}</span></div>
+        <div><span class="kv-k">Docker Network</span><span class="kv-v">${t.docker_network_enabled !== null && t.docker_network_enabled !== undefined ? (t.docker_network_enabled ? 'Enabled' : 'Disabled') : 'Default'}</span></div>
       </div>
     </div>
+    <div class="section-title">Docker Resources</div>
+    <form class="panel" style="padding:1.25rem 1.5rem" onsubmit="saveDockerResources(event,'${id}')">
+      <div class="form-grid">
+        <div class="field">
+          <label for="docker-memory-edit">Memory (MB)</label>
+          <input id="docker-memory-edit" type="number" min="0" placeholder="Leave empty for default" value="${t.docker_memory_mb || ''}">
+          <span class="hint">Max limit configured on server.</span>
+        </div>
+        <div class="field">
+          <label for="docker-cpus-edit">CPUs</label>
+          <input id="docker-cpus-edit" type="number" step="0.1" min="0" placeholder="Leave empty for default" value="${t.docker_cpus !== null && t.docker_cpus !== undefined ? t.docker_cpus : ''}">
+          <span class="hint">Max limit configured on server.</span>
+        </div>
+        <div class="field">
+          <label for="docker-network-edit">Network</label>
+          <select id="docker-network-edit">
+            <option value="" ${t.docker_network_enabled === null || t.docker_network_enabled === undefined ? 'selected' : ''}>Default (per runtime)</option>
+            <option value="true" ${t.docker_network_enabled === true ? 'selected' : ''}>Enabled</option>
+            <option value="false" ${t.docker_network_enabled === false ? 'selected' : ''}>Disabled</option>
+          </select>
+          <span class="hint">Override default network setting for runtime.</span>
+        </div>
+      </div>
+      <div style="margin-top:1rem;display:flex;gap:.6rem">
+        <button type="submit" class="btn btn-accent">Save Docker settings</button>
+      </div>
+    </form>
     <div class="section-title">Alerts</div>
     <form class="panel" style="padding:1.25rem 1.5rem" onsubmit="saveAlerts(event,'${id}')">
       <div class="form-grid">
@@ -567,11 +596,12 @@ function renderUpload(){
         </div>
         <div class="field">
           <label for="rt">Runtime</label>
-          <select id="rt"><option value="go">go</option><option value="node">node</option><option value="k6">k6</option></select>
+          <select id="rt"><option value="go">go</option><option value="node">node</option><option value="python">python</option><option value="k6">k6</option><option value="playwright">playwright</option></select>
         </div>
         <div class="field">
-          <label for="sev">Severity</label>
-          <select id="sev"><option value="P0">P0</option><option value="P1">P1</option><option value="P2" selected>P2</option><option value="P3">P3</option></select>
+          <label for="region">Region</label>
+          <select id="region" disabled style="opacity:0.5;cursor:not-allowed"><option value="us-east-1">us-east-1 (launching soon)</option></select>
+          <span class="hint">Multi-region deployment coming soon</span>
         </div>
         <div class="field">
           <label for="command">Command (optional)</label>
@@ -581,6 +611,21 @@ function renderUpload(){
         <div class="field">
           <label for="timeout">Timeout (seconds)</label>
           <input id="timeout" type="number" value="30" min="1">
+        </div>
+        <div class="field">
+          <label for="docker-memory">Docker Memory (MB, optional)</label>
+          <input id="docker-memory" type="number" min="0" placeholder="e.g. 512">
+          <span class="hint">Leave empty for default. Max limit configured on server.</span>
+        </div>
+        <div class="field">
+          <label for="docker-cpus">Docker CPUs (optional)</label>
+          <input id="docker-cpus" type="number" step="0.1" min="0" placeholder="e.g. 0.5">
+          <span class="hint">Leave empty for default. Max limit configured on server.</span>
+        </div>
+        <div class="field">
+          <label for="docker-network">Docker Network</label>
+          <select id="docker-network"><option value="">Default (per runtime)</option><option value="true">Enabled</option><option value="false">Disabled</option></select>
+          <span class="hint">Override default network setting for runtime.</span>
         </div>
         <div class="field full">
           <label for="cron">Schedule (cron, optional)</label>
@@ -622,10 +667,15 @@ async function submitUpload(e){
   fd.append('name', displayName);
   fd.append('binary', file);
   fd.append('runtime', document.getElementById('rt').value);
-  fd.append('severity', document.getElementById('sev').value);
   fd.append('timeout', document.getElementById('timeout').value);
   const cmd = document.getElementById('command').value.trim();
   if (cmd) fd.append('command', cmd);
+  const dockerMemory = document.getElementById('docker-memory').value.trim();
+  if (dockerMemory) fd.append('docker_memory_mb', dockerMemory);
+  const dockerCPUs = document.getElementById('docker-cpus').value.trim();
+  if (dockerCPUs) fd.append('docker_cpus', dockerCPUs);
+  const dockerNetwork = document.getElementById('docker-network').value;
+  if (dockerNetwork) fd.append('docker_network_enabled', dockerNetwork);
   const cron = document.getElementById('cron').value.trim();
   if (cron) fd.append('cron', cron);
   const webhook = document.getElementById('webhook').value.trim();
@@ -638,6 +688,30 @@ async function submitUpload(e){
   } catch (err) {
     toast(esc(err.message));
     btn.disabled = false;
+  }
+}
+
+async function saveDockerResources(e, testId){
+  e.preventDefault();
+  const dockerMemory = document.getElementById('docker-memory-edit').value.trim();
+  const dockerCPUs = document.getElementById('docker-cpus-edit').value.trim();
+  const dockerNetwork = document.getElementById('docker-network-edit').value;
+  
+  const payload = {};
+  if (dockerMemory) payload.docker_memory_mb = parseInt(dockerMemory, 10);
+  if (dockerCPUs) payload.docker_cpus = parseFloat(dockerCPUs);
+  if (dockerNetwork) payload.docker_network_enabled = dockerNetwork === 'true';
+  
+  try {
+    await apiJson('/tests/' + testId + '/config', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    toast('Docker settings saved');
+    await renderTestDetail(testId);
+  } catch (err) {
+    toast(esc(err.message));
   }
 }
 

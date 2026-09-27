@@ -68,7 +68,7 @@ func main() {
 	q := queue.NewQueue(jobRepo)
 
 	sched := scheduler.NewScheduler(testRepo, q, jobRepo, 30*time.Second)
-	handle := handler.NewHandler(store, testRepo, testRunRepo, q, sched)
+	handle := handler.NewHandler(store, testRepo, testRunRepo, q, sched, cfg)
 
 	// Create and start worker
 	workerID := uuid.NewString()

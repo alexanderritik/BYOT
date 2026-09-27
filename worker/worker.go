@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/alexanderritik/mini-lambda/alert"
+	"github.com/alexanderritik/mini-lambda/bundle"
 	"github.com/alexanderritik/mini-lambda/model"
 	"github.com/alexanderritik/mini-lambda/queue"
 	"github.com/alexanderritik/mini-lambda/repository"
@@ -117,17 +118,36 @@ func (w *Worker) executeJob(ctx context.Context, job *model.Job) error {
 		return err
 	}
 
-	artifactPath := filepath.Join(workspace, "artifact")
-	dst, err := os.OpenFile(artifactPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(dst, reader); err != nil {
-		dst.Close()
-		return err
-	}
-	if err := dst.Close(); err != nil {
-		return err
+	if test.Runtime == "playwright" {
+		zipPath := filepath.Join(workspace, "bundle.zip")
+		dst, err := os.OpenFile(zipPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+		if err != nil {
+			return err
+		}
+		if _, err := io.Copy(dst, reader); err != nil {
+			dst.Close()
+			return err
+		}
+		if err := dst.Close(); err != nil {
+			return err
+		}
+		if err := bundle.UnzipFile(workspace, zipPath); err != nil {
+			return fmt.Errorf("unpack playwright bundle: %w", err)
+		}
+		_ = os.Remove(zipPath)
+	} else {
+		artifactPath := filepath.Join(workspace, "artifact")
+		dst, err := os.OpenFile(artifactPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+		if err != nil {
+			return err
+		}
+		if _, err := io.Copy(dst, reader); err != nil {
+			dst.Close()
+			return err
+		}
+		if err := dst.Close(); err != nil {
+			return err
+		}
 	}
 
 	baseSpec, ok := runtime.GetRuntime(test.Runtime)
@@ -140,9 +160,12 @@ func (w *Worker) executeJob(ctx context.Context, job *model.Job) error {
 		command = baseSpec.Command
 	}
 	spec := runtime.RuntimeSpec{
-		Image:          baseSpec.Image,
-		Command:        command,
-		NetworkEnabled: baseSpec.NetworkEnabled,
+		Image:           baseSpec.Image,
+		Command:         command,
+		NetworkEnabled:  baseSpec.NetworkEnabled,
+		MemoryMB:        test.DockerMemoryMB,
+		CPUs:            test.DockerCPUs,
+		NetworkOverride: test.DockerNetworkEnabled,
 	}
 
 	timeout := time.Duration(test.TimeoutSeconds) * time.Second
@@ -187,7 +210,6 @@ func (w *Worker) executeJob(ctx context.Context, job *model.Job) error {
 		payload := alert.Payload{
 			TestID:              test.UUID,
 			TestName:            alertInfo.TestName,
-			Severity:            alertInfo.Severity,
 			ConsecutiveFailures: alertInfo.Consecutive,
 			FailureThreshold:    alertInfo.Threshold,
 			RunID:               testRun.UUID,

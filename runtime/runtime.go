@@ -13,9 +13,12 @@ import (
 )
 
 type RuntimeSpec struct {
-	Image          string
-	Command        string
-	NetworkEnabled bool
+	Image           string
+	Command         string
+	NetworkEnabled  bool
+	MemoryMB        *int
+	CPUs            *float64
+	NetworkOverride *bool
 }
 
 var runtimes = map[string]RuntimeSpec{

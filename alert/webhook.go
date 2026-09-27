@@ -14,7 +14,6 @@ const webhookTimeout = 10 * time.Second
 type Payload struct {
 	TestID              string
 	TestName            string
-	Severity            string
 	ConsecutiveFailures int
 	FailureThreshold    int
 	RunID               string
@@ -26,16 +25,16 @@ type slackBody struct {
 
 func SendFailure(ctx context.Context, webhookURL string, p Payload) error {
 	text := fmt.Sprintf(
-		":rotating_light: *BYOT alert* · %s (%s)\n%s failed *%d* times in a row (threshold %d). Severity %s · run `%s`",
-		p.TestName, p.TestID, p.TestName, p.ConsecutiveFailures, p.FailureThreshold, p.Severity, p.RunID,
+		":rotating_light: *BYOT alert* · %s (%s)\n%s failed *%d* times in a row (threshold %d) · run `%s`",
+		p.TestName, p.TestID, p.TestName, p.ConsecutiveFailures, p.FailureThreshold, p.RunID,
 	)
 	return postSlack(ctx, webhookURL, text)
 }
 
 func SendRecovery(ctx context.Context, webhookURL string, p Payload) error {
 	text := fmt.Sprintf(
-		":white_check_mark: *BYOT recovered* · %s (%s)\nLatest run passed after consecutive failures. Severity %s.",
-		p.TestName, p.TestID, p.Severity,
+		":white_check_mark: *BYOT recovered* · %s (%s)\nLatest run passed after consecutive failures.",
+		p.TestName, p.TestID,
 	)
 	return postSlack(ctx, webhookURL, text)
 }

@@ -5,16 +5,15 @@ import (
 )
 
 type Test struct {
-	UUID             string     `db:"uuid" json:"uuid"`
-	Name             string     `db:"name" json:"name"`
-	OriginalFilename string     `db:"original_filename" json:"original_filename"`
-	Runtime          string     `db:"runtime" json:"runtime"`
-	Command          string     `db:"command" json:"command"`
-	Severity         string     `db:"severity" json:"severity"`
-	ArtifactKey      string     `db:"artifact_key" json:"-"`
-	TimeoutSeconds   int        `db:"timeout_seconds" json:"timeout_seconds"`
-	ScheduleCron     string     `db:"schedule_cron" json:"schedule_cron"`
-	ScheduleEnabled  bool       `db:"schedule_enabled" json:"schedule_enabled"`
+	UUID                 string     `db:"uuid" json:"uuid"`
+	Name                 string     `db:"name" json:"name"`
+	OriginalFilename     string     `db:"original_filename" json:"original_filename"`
+	Runtime              string     `db:"runtime" json:"runtime"`
+	Command              string     `db:"command" json:"command"`
+	ArtifactKey          string     `db:"artifact_key" json:"-"`
+	TimeoutSeconds       int        `db:"timeout_seconds" json:"timeout_seconds"`
+	ScheduleCron         string     `db:"schedule_cron" json:"schedule_cron"`
+	ScheduleEnabled      bool       `db:"schedule_enabled" json:"schedule_enabled"`
 	NextRunAt            *time.Time `db:"next_run_at" json:"next_run_at"`
 	WebhookURL           string     `db:"webhook_url" json:"webhook_url"`
 	FailureThreshold     int        `db:"failure_threshold" json:"failure_threshold"`
@@ -22,6 +21,9 @@ type Test struct {
 	AlertActive          bool       `db:"alert_active" json:"alert_active"`
 	AlertsEnabled        bool       `db:"alerts_enabled" json:"alerts_enabled"`
 	CreatedAt            time.Time  `db:"created_at" json:"created_at"`
+	DockerMemoryMB       *int       `db:"docker_memory_mb" json:"docker_memory_mb"`
+	DockerCPUs           *float64   `db:"docker_cpus" json:"docker_cpus"`
+	DockerNetworkEnabled *bool      `db:"docker_network_enabled" json:"docker_network_enabled"`
 }
 
 // RunOutcomeAlert describes webhook notifications to send after a run completes.
@@ -30,7 +32,6 @@ type RunOutcomeAlert struct {
 	SendRecovery bool
 	WebhookURL   string
 	TestName     string
-	Severity     string
 	Consecutive  int
 	Threshold    int
 }

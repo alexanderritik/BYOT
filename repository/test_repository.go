@@ -11,15 +11,17 @@ import (
 )
 
 type TestConfigUpdate struct {
-	Command          string
-	Severity         string
-	TimeoutSeconds   int
-	ScheduleCron     string
-	ScheduleEnabled  bool
-	NextRunAt        *time.Time
-	WebhookURL       string
-	FailureThreshold int
-	AlertsEnabled    bool
+	Command              string
+	TimeoutSeconds       int
+	ScheduleCron         string
+	ScheduleEnabled      bool
+	NextRunAt            *time.Time
+	WebhookURL           string
+	FailureThreshold     int
+	AlertsEnabled        bool
+	DockerMemoryMB       *int
+	DockerCPUs           *float64
+	DockerNetworkEnabled *bool
 }
 
 type TestRepository interface {
@@ -44,14 +46,14 @@ func NewTestRepository(pool *pgxpool.Pool) TestRepository {
 func (r *postgresTestRepository) Create(ctx context.Context, test *model.Test) error {
 	_, err := r.pool.Exec(ctx,
 		`INSERT INTO tests (
-			uuid, name, runtime, original_filename, severity, command, artifact_key, timeout_seconds,
-			schedule_cron, schedule_enabled, next_run_at, webhook_url, failure_threshold, alerts_enabled
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+			uuid, name, runtime, original_filename, command, artifact_key, timeout_seconds,
+			schedule_cron, schedule_enabled, next_run_at, webhook_url, failure_threshold, alerts_enabled,
+			docker_memory_mb, docker_cpus, docker_network_enabled
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
 		test.UUID,
 		test.Name,
 		test.Runtime,
 		test.OriginalFilename,
-		test.Severity,
 		test.Command,
 		test.ArtifactKey,
 		test.TimeoutSeconds,
@@ -61,6 +63,9 @@ func (r *postgresTestRepository) Create(ctx context.Context, test *model.Test) e
 		nullIfEmpty(test.WebhookURL),
 		normalizeFailureThreshold(test.FailureThreshold),
 		test.AlertsEnabled,
+		test.DockerMemoryMB,
+		test.DockerCPUs,
+		test.DockerNetworkEnabled,
 	)
 	return err
 }
@@ -82,10 +87,11 @@ func nullIfEmpty(s string) interface{} {
 func (r *postgresTestRepository) GetByID(ctx context.Context, uuid string) (*model.Test, error) {
 	var test model.Test
 	err := r.pool.QueryRow(ctx,
-		`SELECT uuid::text, COALESCE(name, ''), runtime, original_filename, severity,
+		`SELECT uuid::text, COALESCE(name, ''), runtime, original_filename,
 		        COALESCE(command, ''), COALESCE(artifact_key, ''), created_at, timeout_seconds,
 		        COALESCE(schedule_cron, ''), schedule_enabled, next_run_at,
-		        COALESCE(webhook_url, ''), failure_threshold, consecutive_failures, alert_active, alerts_enabled
+		        COALESCE(webhook_url, ''), failure_threshold, consecutive_failures, alert_active, alerts_enabled,
+		        docker_memory_mb, docker_cpus, docker_network_enabled
 		 FROM tests WHERE uuid = $1`,
 		uuid,
 	).Scan(
@@ -93,7 +99,6 @@ func (r *postgresTestRepository) GetByID(ctx context.Context, uuid string) (*mod
 		&test.Name,
 		&test.Runtime,
 		&test.OriginalFilename,
-		&test.Severity,
 		&test.Command,
 		&test.ArtifactKey,
 		&test.CreatedAt,
@@ -106,6 +111,9 @@ func (r *postgresTestRepository) GetByID(ctx context.Context, uuid string) (*mod
 		&test.ConsecutiveFailures,
 		&test.AlertActive,
 		&test.AlertsEnabled,
+		&test.DockerMemoryMB,
+		&test.DockerCPUs,
+		&test.DockerNetworkEnabled,
 	)
 	if err != nil {
 		return nil, err
@@ -115,10 +123,11 @@ func (r *postgresTestRepository) GetByID(ctx context.Context, uuid string) (*mod
 
 func (r *postgresTestRepository) ListWithLastRun(ctx context.Context) ([]model.TestListItem, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT t.uuid::text, COALESCE(t.name, ''), t.runtime, t.original_filename, t.severity,
+		`SELECT t.uuid::text, COALESCE(t.name, ''), t.runtime, t.original_filename,
 		        COALESCE(t.command, ''), COALESCE(t.artifact_key, ''), t.created_at, t.timeout_seconds,
 		        COALESCE(t.schedule_cron, ''), t.schedule_enabled, t.next_run_at,
 		        COALESCE(t.webhook_url, ''), t.failure_threshold, t.consecutive_failures, t.alert_active, t.alerts_enabled,
+		        t.docker_memory_mb, t.docker_cpus, t.docker_network_enabled,
 		        lr.status, lr.started_at, lr.duration_ms,
 		        EXISTS (
 		          SELECT 1 FROM jobs j
@@ -151,7 +160,6 @@ func (r *postgresTestRepository) ListWithLastRun(ctx context.Context) ([]model.T
 			&test.Name,
 			&test.Runtime,
 			&test.OriginalFilename,
-			&test.Severity,
 			&test.Command,
 			&test.ArtifactKey,
 			&test.CreatedAt,
@@ -164,6 +172,9 @@ func (r *postgresTestRepository) ListWithLastRun(ctx context.Context) ([]model.T
 			&test.ConsecutiveFailures,
 			&test.AlertActive,
 			&test.AlertsEnabled,
+			&test.DockerMemoryMB,
+			&test.DockerCPUs,
+			&test.DockerNetworkEnabled,
 			&lastStatus,
 			&lastStarted,
 			&lastDuration,
@@ -188,17 +199,18 @@ func (r *postgresTestRepository) UpdateConfig(ctx context.Context, testID string
 	_, err := r.pool.Exec(ctx,
 		`UPDATE tests SET
 			command = $1,
-			severity = $2,
-			timeout_seconds = $3,
-			schedule_cron = $4,
-			schedule_enabled = $5,
-			next_run_at = $6,
-			webhook_url = $7,
-			failure_threshold = $8,
-			alerts_enabled = $9
-		 WHERE uuid = $10`,
+			timeout_seconds = $2,
+			schedule_cron = $3,
+			schedule_enabled = $4,
+			next_run_at = $5,
+			webhook_url = $6,
+			failure_threshold = $7,
+			alerts_enabled = $8,
+			docker_memory_mb = $9,
+			docker_cpus = $10,
+			docker_network_enabled = $11
+		 WHERE uuid = $12`,
 		cfg.Command,
-		cfg.Severity,
 		cfg.TimeoutSeconds,
 		nullIfEmpty(cfg.ScheduleCron),
 		cfg.ScheduleEnabled,
@@ -206,6 +218,9 @@ func (r *postgresTestRepository) UpdateConfig(ctx context.Context, testID string
 		nullIfEmpty(cfg.WebhookURL),
 		normalizeFailureThreshold(cfg.FailureThreshold),
 		cfg.AlertsEnabled,
+		cfg.DockerMemoryMB,
+		cfg.DockerCPUs,
+		cfg.DockerNetworkEnabled,
 		testID,
 	)
 	return err
@@ -213,10 +228,11 @@ func (r *postgresTestRepository) UpdateConfig(ctx context.Context, testID string
 
 func (r *postgresTestRepository) ListDueScheduled(ctx context.Context, now time.Time) ([]*model.Test, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT uuid::text, COALESCE(name, ''), runtime, original_filename, severity,
+		`SELECT uuid::text, COALESCE(name, ''), runtime, original_filename,
 		        COALESCE(command, ''), COALESCE(artifact_key, ''), created_at, timeout_seconds,
 		        COALESCE(schedule_cron, ''), schedule_enabled, next_run_at,
-		        COALESCE(webhook_url, ''), failure_threshold, consecutive_failures, alert_active
+		        COALESCE(webhook_url, ''), failure_threshold, consecutive_failures, alert_active,
+		        docker_memory_mb, docker_cpus, docker_network_enabled
 		 FROM tests
 		 WHERE schedule_enabled = true
 		   AND schedule_cron IS NOT NULL
@@ -239,7 +255,6 @@ func (r *postgresTestRepository) ListDueScheduled(ctx context.Context, now time.
 			&test.Name,
 			&test.Runtime,
 			&test.OriginalFilename,
-			&test.Severity,
 			&test.Command,
 			&test.ArtifactKey,
 			&test.CreatedAt,
@@ -251,6 +266,9 @@ func (r *postgresTestRepository) ListDueScheduled(ctx context.Context, now time.
 			&test.FailureThreshold,
 			&test.ConsecutiveFailures,
 			&test.AlertActive,
+			&test.DockerMemoryMB,
+			&test.DockerCPUs,
+			&test.DockerNetworkEnabled,
 		); err != nil {
 			return nil, err
 		}
@@ -266,15 +284,15 @@ func (r *postgresTestRepository) RecordRunOutcome(ctx context.Context, testID st
 	}
 	defer tx.Rollback(ctx)
 
-	var name, severity, webhook string
+	var name, webhook string
 	var threshold, consecutive int
 	var alertActive, alertsEnabled bool
 	err = tx.QueryRow(ctx,
-		`SELECT COALESCE(name, ''), severity, COALESCE(webhook_url, ''), failure_threshold,
+		`SELECT COALESCE(name, ''), COALESCE(webhook_url, ''), failure_threshold,
 		        consecutive_failures, alert_active, alerts_enabled
 		 FROM tests WHERE uuid = $1 FOR UPDATE`,
 		testID,
-	).Scan(&name, &severity, &webhook, &threshold, &consecutive, &alertActive, &alertsEnabled)
+	).Scan(&name, &webhook, &threshold, &consecutive, &alertActive, &alertsEnabled)
 	if err != nil {
 		return nil, err
 	}
@@ -282,7 +300,6 @@ func (r *postgresTestRepository) RecordRunOutcome(ctx context.Context, testID st
 	out := &model.RunOutcomeAlert{
 		WebhookURL: webhook,
 		TestName:   name,
-		Severity:   severity,
 		Threshold:  threshold,
 	}
 

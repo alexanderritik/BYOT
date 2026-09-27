@@ -26,7 +26,6 @@ func TestSendFailurePostsSlackJSON(t *testing.T) {
 	err := SendFailure(context.Background(), srv.URL, Payload{
 		TestID:              "abc",
 		TestName:            "checkout",
-		Severity:            "P0",
 		ConsecutiveFailures: 3,
 		FailureThreshold:    3,
 		RunID:               "run-1",
