@@ -36,6 +36,14 @@ type RunOutcomeAlert struct {
 	Threshold    int
 }
 
+type Screenshot struct {
+	UUID       string    `db:"uuid" json:"uuid"`
+	RunID      string    `db:"run_id" json:"run_id"`
+	Filename   string    `db:"filename" json:"filename"`
+	StorageKey string    `db:"storage_key" json:"storage_key"`
+	CreatedAt  time.Time `db:"created_at" json:"created_at"`
+}
+
 type TestRun struct {
 	UUID         string    `db:"uuid" json:"uuid"`
 	TestID       string    `db:"test_id" json:"test_id"`

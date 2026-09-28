@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/alexanderritik/mini-lambda/alert"
@@ -21,22 +22,24 @@ import (
 )
 
 type Worker struct {
-	workerID     string
-	queue        *queue.Queue
-	testRepo     repository.TestRepository
-	testRunRepo  repository.TestRunRepository
-	storage      storage.Storage
-	pollInterval time.Duration
+	workerID       string
+	queue          *queue.Queue
+	testRepo       repository.TestRepository
+	testRunRepo    repository.TestRunRepository
+	screenshotRepo repository.ScreenshotRepository
+	storage        storage.Storage
+	pollInterval   time.Duration
 }
 
-func NewWorker(workerID string, q *queue.Queue, testRepo repository.TestRepository, testRunRepo repository.TestRunRepository, storage storage.Storage) *Worker {
+func NewWorker(workerID string, q *queue.Queue, testRepo repository.TestRepository, testRunRepo repository.TestRunRepository, screenshotRepo repository.ScreenshotRepository, storage storage.Storage) *Worker {
 	return &Worker{
-		workerID:     workerID,
-		queue:        q,
-		testRepo:     testRepo,
-		testRunRepo:  testRunRepo,
-		storage:      storage,
-		pollInterval: 5 * time.Second,
+		workerID:       workerID,
+		queue:          q,
+		testRepo:       testRepo,
+		testRunRepo:    testRunRepo,
+		screenshotRepo: screenshotRepo,
+		storage:        storage,
+		pollInterval:   5 * time.Second,
 	}
 }
 
@@ -183,14 +186,17 @@ func (w *Worker) executeJob(ctx context.Context, job *model.Job) error {
 		status = "fail"
 	}
 
+	// Generate run ID before uploading log
+	runID := uuid.NewString()
+
 	logReader := bytes.NewReader(result.Output)
-	logURL, uploadErr := w.storage.UploadLog(test.UUID, logReader, int64(len(result.Output)))
+	logURL, uploadErr := w.storage.UploadLog(test.UUID, runID, logReader, int64(len(result.Output)))
 	if uploadErr != nil {
 		log.Error().Err(uploadErr).Msg("failed to upload logs")
 	}
 
 	testRun := &model.TestRun{
-		UUID:         uuid.NewString(),
+		UUID:         runID,
 		TestID:       test.UUID,
 		StartedAt:    startedAt,
 		DurationMs:   duration.Milliseconds(),
@@ -202,6 +208,13 @@ func (w *Worker) executeJob(ctx context.Context, job *model.Job) error {
 
 	if err := w.testRunRepo.Create(ctx, testRun); err != nil {
 		return err
+	}
+
+	// Upload screenshots for Playwright runs
+	if test.Runtime == "playwright" {
+		if err := w.uploadScreenshots(ctx, workspace, test.UUID, runID); err != nil {
+			log.Error().Err(err).Str("run_id", runID).Msg("failed to upload screenshots")
+		}
 	}
 
 	if alertInfo, err := w.testRepo.RecordRunOutcome(ctx, test.UUID, status == "pass"); err != nil {
@@ -238,4 +251,92 @@ func (w *Worker) executeJob(ctx context.Context, job *model.Job) error {
 		Msg("job execution completed")
 
 	return execErr
+}
+
+func (w *Worker) uploadScreenshots(ctx context.Context, workspace string, testUUID, runID string) error {
+	// Scan workspace root and common screenshot directories
+	// Users may save screenshots with relative paths that end up in root
+	screenshotDirs := []string{
+		workspace, // Scan root for images saved with relative paths
+		filepath.Join(workspace, "test-results"),
+		filepath.Join(workspace, "screenshots"),
+		filepath.Join(workspace, "playwright-report"),
+	}
+
+	for _, dir := range screenshotDirs {
+		if err := w.uploadScreenshotsFromDir(ctx, dir, testUUID, runID); err != nil {
+			log.Debug().Err(err).Str("dir", dir).Msg("failed to upload screenshots from directory")
+		}
+	}
+	return nil
+}
+
+func (w *Worker) uploadScreenshotsFromDir(ctx context.Context, dir string, testUUID, runID string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // Directory doesn't exist, that's fine
+		}
+		return err
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			// Recursively process subdirectories
+			subDir := filepath.Join(dir, entry.Name())
+			if err := w.uploadScreenshotsFromDir(ctx, subDir, testUUID, runID); err != nil {
+				log.Debug().Err(err).Str("dir", subDir).Msg("failed to upload screenshots from subdirectory")
+			}
+			continue
+		}
+
+		// Check if file is an image
+		ext := strings.ToLower(filepath.Ext(entry.Name()))
+		if ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".webp" {
+			continue
+		}
+
+		filePath := filepath.Join(dir, entry.Name())
+		if err := w.uploadScreenshotFile(ctx, filePath, entry.Name(), testUUID, runID); err != nil {
+			log.Error().Err(err).Str("file", filePath).Msg("failed to upload screenshot")
+		}
+	}
+	return nil
+}
+
+func (w *Worker) uploadScreenshotFile(ctx context.Context, filePath, filename, testUUID, runID string) error {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	// Get file info to determine size
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return err
+	}
+
+	// Upload to storage: {testUUID}/log/{runUUID}/{filename}
+	storageKey := fmt.Sprintf("%s/log/%s/%s", testUUID, runID, filename)
+	_, err = w.storage.UploadBlob(storageKey, file, fileInfo.Size())
+	if err != nil {
+		return fmt.Errorf("upload screenshot to storage: %w", err)
+	}
+
+	// Create database record
+	screenshot := &model.Screenshot{
+		UUID:       uuid.NewString(),
+		RunID:      runID,
+		Filename:   filename,
+		StorageKey: storageKey,
+		CreatedAt:  time.Now().UTC(),
+	}
+
+	if err := w.screenshotRepo.Create(ctx, screenshot); err != nil {
+		return fmt.Errorf("create screenshot record: %w", err)
+	}
+
+	log.Info().Str("screenshot_id", screenshot.UUID).Str("filename", filename).Msg("screenshot uploaded")
+	return nil
 }

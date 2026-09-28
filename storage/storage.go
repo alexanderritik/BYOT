@@ -3,7 +3,6 @@ package storage
 import (
 	"context"
 	"io"
-	"time"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -12,7 +11,8 @@ import (
 
 type Storage interface {
 	UploadArtifact(filepath string, data io.Reader, size int64) (string, error)
-	UploadLog(filepath string, data io.Reader, size int64) (string, error)
+	UploadLog(testUUID, runID string, data io.Reader, size int64) (string, error)
+	UploadBlob(objectName string, data io.Reader, size int64) (string, error)
 	DownloadBlob(filepath string) (io.Reader, error)
 	DeletePrefix(prefix string) error
 	DeleteObject(objectName string) error
@@ -57,10 +57,25 @@ func (m MinioStorage) UploadArtifact(filepath string, data io.Reader, size int64
 	return objectName, nil
 }
 
-func (m MinioStorage) UploadLog(filepath string, data io.Reader, size int64) (string, error) {
+func (m MinioStorage) UploadLog(testUUID, runID string, data io.Reader, size int64) (string, error) {
+	objectName := testUUID + "/log/" + runID + "/log"
 
-	objectName := filepath + "/logs/" + time.Now().UTC().Format(time.RFC3339) + ".txt"
+	_, err := m.client.PutObject(
+		context.Background(),
+		m.bucketName,
+		objectName,
+		data,
+		int64(size),
+		minio.PutObjectOptions{},
+	)
+	if err != nil {
+		return "", err
+	}
 
+	return objectName, nil
+}
+
+func (m MinioStorage) UploadBlob(objectName string, data io.Reader, size int64) (string, error) {
 	_, err := m.client.PutObject(
 		context.Background(),
 		m.bucketName,

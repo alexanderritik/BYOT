@@ -64,15 +64,16 @@ func main() {
 	testRepo := repository.NewTestRepository(pool)
 	testRunRepo := repository.NewTestRunRepository(pool)
 	jobRepo := repository.NewJobRepository(pool)
+	screenshotRepo := repository.NewScreenshotRepository(pool)
 
 	q := queue.NewQueue(jobRepo)
 
 	sched := scheduler.NewScheduler(testRepo, q, jobRepo, 30*time.Second)
-	handle := handler.NewHandler(store, testRepo, testRunRepo, q, sched, cfg)
+	handle := handler.NewHandler(store, testRepo, testRunRepo, screenshotRepo, q, sched, cfg)
 
 	// Create and start worker
 	workerID := uuid.NewString()
-	w := worker.NewWorker(workerID, q, testRepo, testRunRepo, store)
+	w := worker.NewWorker(workerID, q, testRepo, testRunRepo, screenshotRepo, store)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -92,6 +93,8 @@ func main() {
 	mux.HandleFunc("/tests/", handle.Tests)
 	mux.HandleFunc("/runs/", handle.RunRoutes)
 	mux.HandleFunc("/status/", handle.JobStatus)
+	mux.HandleFunc("/screenshots/", handle.ListScreenshots)
+	mux.HandleFunc("/screenshot/", handle.DownloadScreenshot)
 
 	server := &http.Server{
 		Addr:    ":3000",

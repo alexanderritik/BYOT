@@ -25,22 +25,24 @@ const (
 )
 
 type Handler struct {
-	storage     storage.Storage
-	test        repository.TestRepository
-	testRunRepo repository.TestRunRepository
-	queue       *queue.Queue
-	scheduler   *scheduler.Scheduler
-	config      config.Config
+	storage        storage.Storage
+	test           repository.TestRepository
+	testRunRepo    repository.TestRunRepository
+	screenshotRepo repository.ScreenshotRepository
+	queue          *queue.Queue
+	scheduler      *scheduler.Scheduler
+	config         config.Config
 }
 
-func NewHandler(storage storage.Storage, test repository.TestRepository, testRun repository.TestRunRepository, q *queue.Queue, sched *scheduler.Scheduler, cfg config.Config) *Handler {
+func NewHandler(storage storage.Storage, test repository.TestRepository, testRunRepo repository.TestRunRepository, screenshotRepo repository.ScreenshotRepository, q *queue.Queue, sched *scheduler.Scheduler, cfg config.Config) *Handler {
 	return &Handler{
-		storage:     storage,
-		test:        test,
-		testRunRepo: testRun,
-		queue:       q,
-		scheduler:   sched,
-		config:      cfg,
+		storage:        storage,
+		test:           test,
+		testRunRepo:    testRunRepo,
+		screenshotRepo: screenshotRepo,
+		queue:          q,
+		scheduler:      sched,
+		config:         cfg,
 	}
 }
 
@@ -579,4 +581,40 @@ func (hl *Handler) UploadBinary(h http.ResponseWriter, r *http.Request) {
 		"id":      fileName,
 		"message": "binary uploaded successfully",
 	})
+}
+
+func (hl *Handler) ListScreenshots(w http.ResponseWriter, r *http.Request) {
+	runID := r.URL.Path[len("/screenshots/"):]
+	if runID == "" {
+		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "run_id required"})
+		return
+	}
+	screenshots, err := hl.screenshotRepo.ListByRunID(r.Context(), runID)
+	if err != nil {
+		jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": "failed to list screenshots"})
+		return
+	}
+	jsonResponse(w, http.StatusOK, screenshots)
+}
+
+func (hl *Handler) DownloadScreenshot(w http.ResponseWriter, r *http.Request) {
+	screenshotID := r.URL.Path[len("/screenshot/"):]
+	if screenshotID == "" {
+		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "screenshot_id required"})
+		return
+	}
+	screenshot, err := hl.screenshotRepo.GetByUUID(r.Context(), screenshotID)
+	if err != nil {
+		jsonResponse(w, http.StatusNotFound, map[string]string{"error": "screenshot not found"})
+		return
+	}
+	reader, err := hl.storage.DownloadBlob(screenshot.StorageKey)
+	if err != nil {
+		jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": "failed to download screenshot"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Content-Disposition", "inline; filename=\""+screenshot.Filename+"\"")
+	io.Copy(w, reader)
 }
