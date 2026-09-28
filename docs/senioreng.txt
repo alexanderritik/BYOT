@@ -1,0 +1,30 @@
+The biggest things I'd focus on before exposing it publicly are:
+1. Container isolation
+2. Docker socket security
+3. Network isolation
+4. CPU/RAM/PID/time limits
+5. Artifact and log size limits
+6. Webhook signing
+7. Persistent screenshot/trace storage
+8. Concurrency limits per user
+9. Automatic cleanup of old execution containers/artifacts
+10. Preventing access to your PostgreSQL/Redis/MinIO/internal services
+
+
+Then they can ask:
+“What would you change at 10,000 concurrent executions?”
+
+And that's where you can discuss:
+- worker pools
+- queue partitioning
+- Kubernetes
+- container scheduling
+- autoscaling
+- execution quotas
+- per-tenant limits
+- artifact storage
+- distributed scheduling
+- backpressure
+- idempotency
+- retries
+That's a very good senior-level discussion.

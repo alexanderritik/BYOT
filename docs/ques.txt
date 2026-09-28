@@ -1,0 +1,27 @@
+Why this is useful for a senior interview
+It naturally opens questions around:
+Distributed systems
+- How do you schedule thousands of executions?
+- What happens if a worker dies?
+- How do you prevent duplicate execution?
+- How do you retry failed jobs?
+- How do you handle concurrent runs?
+Infrastructure
+- Why Docker?
+- Why not Kubernetes?
+- How do you isolate tenants?
+- What happens when a container consumes all memory?
+- How do you clean up orphaned containers?
+Security
+- You're executing arbitrary code — what's your threat model?
+- Can a Playwright test access PostgreSQL?
+- Can it access the Docker socket?
+- Can it access metadata/internal services?
+- How do you prevent container escape?
+Backend
+- How are execution states represented?
+- How do you persist logs?
+- How do you handle large logs?
+- Where do screenshots go?
+- How do webhooks retry?
+- How do you make webhook delivery idempotent?

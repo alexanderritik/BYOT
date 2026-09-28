@@ -1,0 +1,1352 @@
+
+Current concept:
+
+    Production monitors built from your own test binaries.
+
+I'd make it much sharper:
+Turn your existing tests into production monitors.
+
+Then:
+
+    Upload a test. Schedule it. We run it continuously and alert you when production stops behaving the way your test expects.
+
+And immediately show:
+
+[ Upload your first test ]
+
+Works with
+Playwright · k6 · Node · Go · Python · HTTP
+
+The user should understand the product in 10 seconds.
+4. Your real product isn't the dashboard
+
+This is probably the most important point.
+
+The architecture I'd eventually want is:
+
+                   ┌───────────────┐
+                   │   Dashboard   │
+                   └───────┬───────┘
+                           │
+                           ▼
+                    ┌─────────────┐
+                    │ Job control │
+                    └──────┬──────┘
+                           │
+                 ┌─────────┴─────────┐
+                 ▼                   ▼
+            Scheduler             Queue
+                                     │
+                 ┌───────────────────┼────────────────┐
+                 ▼                   ▼                ▼
+              Runner 1            Runner 2         Runner 3
+                 │                   │                │
+                 └──────────────┬────┴────────────────┘
+                                ▼
+                         Results / Logs
+                                │
+                       ┌────────┴────────┐
+                       ▼                 ▼
+                    Alerts            History
+
+The dashboard is the easy part.
+
+The runner infrastructure is the company.
+
+If you make execution extremely reliable, isolated, reproducible and easy, that's where the value accumulates.
+5. Your first customer should NOT be an enterprise
+
+I'd target something like:
+5–30 person SaaS engineering teams
+
+They typically have:
+
+    a production application
+
+    automated tests
+
+    no dedicated SRE team
+
+    critical user flows
+
+    occasional production regressions
+
+    enough engineering sophistication to understand synthetic monitoring
+
+    not enough infrastructure enthusiasm to build it themselves
+
+That's a sweet spot.
+
+For example:
+
+SaaS company
+    ↓
+Has Playwright tests
+    ↓
+Runs them in CI
+    ↓
+CI is green
+    ↓
+Production breaks tomorrow
+    ↓
+Nobody knows until customer complains
+
+Your pitch:
+
+    Your CI tests tell you whether a deployment worked. BYOT tells you whether production is still working.
+
+That's compelling.
+6. Your first 10 customers
+
+I would deliberately make this concierge-heavy.
+
+Don't build a self-service SaaS immediately.
+
+For customer #1:
+
+    “Send me your existing test. I'll get it running.”
+
+Customer #2:
+
+Same.
+
+Customer #3:
+
+Same.
+
+By customer #5 you'll discover the actual product.
+
+You may discover that users don't really want:
+
+    upload binary
+
+They may actually want:
+
+npx byot deploy
+
+or:
+
+byot deploy
+
+or:
+
+name: checkout
+
+runtime: node
+command: npm test
+schedule: "*/15 * * * *"
+
+alerts:
+  after: 3
+
+Let customers tell you which abstraction wins.
+7. What I'd build for those first 10
+
+Not 50 features.
+
+Just this:
+Step 1 — Create monitor
+
+Name
+Runtime
+Command
+Schedule
+Timeout
+
+Step 2 — Execute safely
+
+container
+CPU limit
+memory limit
+timeout
+network policy
+
+Step 3 — Show result
+
+PASS
+FAIL
+duration
+exit code
+logs
+
+Step 4 — Alert
+
+3 consecutive failures
+        ↓
+Slack/webhook
+
+Step 5 — Run manually
+
+Run now
+
+Step 6 — History
+
+✓
+✓
+✗
+✗
+✗  ← alert
+✓   ← recovered
+
+That's enough.
+8. Then comes the feature that could make this interesting
+Multiple locations
+
+Imagine:
+
+checkout-flow
+
+Mumbai       ✓  1.8s
+Singapore    ✓  2.1s
+Frankfurt    ✗  timeout
+Virginia     ✓  1.9s
+
+Now you can tell the customer something much more useful than:
+
+    “Your test failed.”
+
+You can tell them:
+
+    “Your checkout is failing from Frankfurt, but succeeding elsewhere.”
+
+That's valuable operational information.
+
+And suddenly your product is moving toward:
+Global production verification
+
+rather than:
+Hosted cron jobs.
+
+That's a much more interesting category.
+9. The other major opportunity: artifacts
+
+If the test is Playwright:
+
+FAIL
+│
+├── stdout
+├── stderr
+├── screenshot.png
+├── video.webm
+└── trace.zip
+
+If it's a browser test, the screenshot alone can dramatically improve debugging.
+
+Instead of:
+
+    ✗ Pay button not found
+
+you give them:
+
+Run failed
+
+    Pay button not found
+
+[ screenshot ]
+
+That is the sort of thing people will pay for.
+10. What I would NOT build yet
+
+Seriously resist these.
+
+Don't build:
+
+    Kubernetes operator
+
+    Terraform provider
+
+    SSO
+
+    RBAC
+
+    elaborate incident management
+
+    custom alerting language
+
+    25 integrations
+
+    AI root-cause analysis
+
+    fancy analytics
+
+    dashboards with 40 charts
+
+    mobile app
+
+    complicated billing
+
+    giant test marketplace
+
+Not yet.
+
+You need to discover whether people will pay for:
+
+    continuous execution of their existing production tests.
+
+Everything else is downstream.
+11. Your moat
+
+This is the difficult question.
+
+If your entire product becomes:
+
+upload
+→ Docker
+→ cron
+→ logs
+
+someone can reproduce it.
+
+Your potential moat is the combination of:
+Execution infrastructure
+
+Reliable, isolated, geographically distributed execution.
+Test compatibility
+
+Making arbitrary real-world tests painless.
+Debugging
+
+Logs + screenshots + traces + artifacts + environment.
+Historical intelligence
+
+Knowing:
+
+This normally takes 1.8s.
+
+Today's run:
+8.2s
+
+Previous 30 runs:
+1.7–2.1s
+
+Network/location intelligence
+
+Knowing:
+
+India → PASS
+Europe → FAIL
+US → PASS
+
+The more operational context you accumulate, the harder it becomes to replace you.
+12. Pricing
+
+I wouldn't obsess over pricing yet.
+
+But I wouldn't make it purely:
+
+    $X per test.
+
+Because customers don't really value a “test.”
+
+They value:
+
+    production confidence.
+
+A reasonable early model might eventually look like:
+
+Free
+    1 monitor
+    low frequency
+    short history
+
+Team
+    multiple monitors
+    frequent runs
+    alerts
+    history
+    artifacts
+
+Business
+    multiple regions
+    higher execution limits
+    longer retention
+    team features
+
+But I'd only finalize this after talking to customers.
+13. The metric I'd obsess over
+
+Not:
+
+    number of tests uploaded.
+
+Not:
+
+    dashboard visits.
+
+Not:
+
+    number of runs.
+
+I'd want:
+Monitored production flows per active customer
+
+Because this tells you whether BYOT becomes infrastructure.
+
+For example:
+
+Customer joins
+       ↓
+1 test
+       ↓
+3 tests
+       ↓
+8 tests
+       ↓
+25 production flows
+
+That's beautiful.
+
+Once a company has 20–30 critical flows running through your infrastructure, replacing you becomes much harder.
+14. The 30-day plan I'd personally follow
+Week 1
+
+Forget polish.
+
+Build:
+
+upload/package
+      ↓
+container
+      ↓
+execute
+      ↓
+capture logs
+      ↓
+result
+
+Get this rock solid.
+Week 2
+
+Add:
+
+scheduler
+timeouts
+retries
+run history
+Run now
+webhook
+
+Week 3
+
+Get 3 real companies using it.
+
+Not friends saying:
+
+    “Looks cool.”
+
+Real production tests.
+
+Watch them use it.
+Week 4
+
+Talk to every user.
+
+Ask:
+
+    What were you using before this?
+
+    Why wasn't that good enough?
+
+    What would make you remove BYOT?
+
+    What happened the first time BYOT caught a real problem?
+
+    What information did you need that we didn't provide?
+
+Those answers are more valuable than another month of coding.
+15. The biggest signal I'd look for
+
+Here's the moment I'd know you're onto something.
+
+A customer says:
+
+    “Can you add our signup flow?”
+
+Then a week later:
+
+    “Can you add checkout?”
+
+Then:
+
+    “Can you run it from Europe?”
+
+Then:
+
+    “Can you retain screenshots for 30 days?”
+
+Then:
+
+    “Can we add our payment flow?”
+
+At that point they're no longer experimenting.
+
+They're turning BYOT into their production verification layer.
+
+That's the behavior I'd want.
+My final assessment
+
+I wouldn't throw this idea away.
+
+I'd actually do the opposite: strip it down and get it into the hands of real engineering teams immediately.
+
+Your current prototype is probably 20% of the product and 80% of the presentation.
+
+That's not an insult. It's exactly where a prototype should be.
+
+The next version shouldn't primarily be prettier.
+
+It should prove this loop:
+
+Existing test
+     ↓
+BYOT
+     ↓
+runs reliably
+     ↓
+production breaks
+     ↓
+BYOT catches it
+     ↓
+engineer gets useful evidence
+     ↓
+engineer fixes it
+     ↓
+Run now
+     ↓
+✓ recovered
+
+If that loop happens repeatedly for real customers, you have something worth pursuing.
+
+If customers merely think the dashboard is nice, you don't.
+
+And if I were building it, my immediate goal would be not “launch BYOT.”
+
+It would be:
+
+    Get 10 companies to trust BYOT with one production-critical test.
+
+That's the milestone I'd chase before almost anything else.
+
+
+ChatGPT said:
+
+Yes. If you're choosing only two to build first, I'd pick:
+1. Playwright
+2. k6
+Why Playwright first
+
+This is the clearest fit for your product vision.
+
+Playwright is specifically designed for end-to-end browser testing, and it supports TypeScript/JavaScript directly. PPlaywright
+
+That gives BYOT a very compelling use case:
+
+    “Take your existing Playwright test and turn it into a 24/7 production monitor.”
+
+For example:
+
+checkout.spec.ts
+       ↓
+      BYOT
+       ↓
+Every 15 minutes
+       ↓
+Chrome + real production
+       ↓
+✓ / ✗
+       ↓
+Screenshot + logs + alert
+
+And browser tests give you something much more valuable than just an exit code:
+
+    screenshots
+
+    traces
+
+    videos
+
+    page errors
+
+    network failures
+
+    actual user-flow validation
+
+That's a strong product experience.
+Why k6 second
+
+k6 gives you a different category of customer/use case rather than another variation of browser testing.
+
+You can position it as:
+
+    “Continuously test whether your production APIs are healthy and behaving within expected performance boundaries.”
+
+So your first two pillars become:
+	Playwright	k6
+Primary use	User journeys	APIs / performance
+Example	Login → checkout → payment	API → latency → throughput
+Output	Screenshots/traces/logs	Metrics/results/logs
+Customer	SaaS/product teams	Backend/platform teams
+BYOT story	Existing browser tests → monitoring	Existing load/API tests → monitoring
+
+That gives you a much broader initial market without trying to support six runtimes simultaneously.
+
+Graph  which show last light green pass for a particular test case
+
+Think of a way to store screenshot in case of Playwright either folder inside folder for docs
+
+Think if we can solve something information about k6 and playwright in short like information of one point which make sense
+
+
+
+    Yes. Let's go through each improvement one by one, with the reason, the change, and code you can actually use.
+
+    Your current code is already working, so I would not rewrite everything at once. Make these changes incrementally.
+    1. Simplify the Tests() router
+    Current problem
+
+    Your Tests() function is doing a lot:
+
+    if strings.HasSuffix(path, "/schedule/start") {
+        ...
+    }
+
+    if strings.HasSuffix(path, "/schedule/stop") {
+        ...
+    }
+
+    if strings.HasSuffix(path, "/runs") {
+        ...
+    }
+
+    if strings.HasSuffix(path, "/config") {
+        ...
+    }
+
+    As you add more endpoints, this function will become harder to understand.
+    Better approach
+
+    Keep Tests() as the router, but extract the repeated route parsing.
+
+    For example:
+
+    func extractTestID(path, suffix string) string {
+        id := strings.TrimSuffix(path, suffix)
+        return strings.Trim(id, "/")
+    }
+
+    Then:
+
+    if strings.HasSuffix(path, "/schedule/start") {
+        testID := extractTestID(path, "/schedule/start")
+        if testID == "" {
+            jsonResponse(w, http.StatusBadRequest, map[string]string{
+                "error": "test ID is missing",
+            })
+            return
+        }
+
+        hl.enableSchedule(w, r, testID)
+        return
+    }
+
+    And:
+
+    if strings.HasSuffix(path, "/schedule/stop") {
+        testID := extractTestID(path, "/schedule/stop")
+        if testID == "" {
+            jsonResponse(w, http.StatusBadRequest, map[string]string{
+                "error": "test ID is missing",
+            })
+            return
+        }
+
+        hl.disableSchedule(w, r, testID)
+        return
+    }
+
+    This doesn't fundamentally change your architecture. It just removes duplicated string manipulation.
+    2. Don't use strings.HasSuffix() for everything
+
+    This is a more important routing issue.
+
+    Currently:
+
+    if strings.HasSuffix(path, "/runs") {
+
+    means something like:
+
+    /tests/foo/bar/runs
+
+    could potentially be interpreted as a test ID of:
+
+    foo/bar
+
+    That's probably not what you want.
+
+    You know your routes have a specific structure:
+
+    /tests/{testID}
+    /tests/{testID}/runs
+    /tests/{testID}/config
+    /tests/{testID}/schedule/start
+    /tests/{testID}/schedule/stop
+
+    You can parse the path into pieces.
+
+    For example:
+
+    parts := strings.Split(strings.Trim(path, "/"), "/")
+
+    For:
+
+    /tests/abc/runs
+
+    you get:
+
+    ["abc", "runs"]
+
+    For:
+
+    /tests/abc/schedule/stop
+
+    you get:
+
+    ["abc", "schedule", "stop"]
+
+    Then routing becomes much more explicit.
+
+    For example:
+
+    parts := strings.Split(strings.Trim(path, "/"), "/")
+
+    switch {
+    case len(parts) == 1:
+        // /tests/{id}
+
+    case len(parts) == 2 && parts[1] == "runs":
+        // /tests/{id}/runs
+
+    case len(parts) == 2 && parts[1] == "config":
+        // /tests/{id}/config
+
+    case len(parts) == 3 &&
+        parts[1] == "schedule" &&
+        parts[2] == "start":
+        // /tests/{id}/schedule/start
+
+    case len(parts) == 3 &&
+        parts[1] == "schedule" &&
+        parts[2] == "stop":
+        // /tests/{id}/schedule/stop
+    }
+
+    This is more verbose initially, but it makes the allowed URL structure much clearer.
+    3. Don't update the entire test configuration for schedule stop
+
+    This is the most important architectural improvement.
+
+    Right now:
+
+    func (hl *Handler) disableSchedule(...)
+
+    gets the whole test:
+
+    test, err := hl.test.GetByID(...)
+
+    then builds:
+
+    repository.TestConfigUpdate{
+        Command:              test.Command,
+        TimeoutSeconds:       test.TimeoutSeconds,
+        ScheduleCron:         test.ScheduleCron,
+        ScheduleEnabled:      false,
+        NextRunAt:            nil,
+        ...
+    }
+
+    But you're really saying:
+
+        "Change only the scheduling state."
+
+    So the repository should expose that operation directly.
+    Add this to TestRepository
+
+    Currently:
+
+    type TestRepository interface {
+        ...
+        UpdateNextRunAt(ctx context.Context, testID string, next time.Time) error
+    }
+
+    Add:
+
+    DisableSchedule(ctx context.Context, testID string) error
+    EnableSchedule(ctx context.Context, testID string, nextRun time.Time) error
+
+    So:
+
+    type TestRepository interface {
+        Create(ctx context.Context, test *model.Test) error
+        GetByID(ctx context.Context, uuid string) (*model.Test, error)
+        ListWithLastRun(ctx context.Context) ([]model.TestListItem, error)
+        UpdateConfig(ctx context.Context, testID string, cfg TestConfigUpdate) error
+
+        EnableSchedule(ctx context.Context, testID string, nextRun time.Time) error
+        DisableSchedule(ctx context.Context, testID string) error
+
+        ListDueScheduled(ctx context.Context, now time.Time) ([]*model.Test, error)
+        UpdateNextRunAt(ctx context.Context, testID string, next time.Time) error
+
+        RecordRunOutcome(ctx context.Context, testID string, passed bool) (*model.RunOutcomeAlert, error)
+        Delete(ctx context.Context, testID string) error
+    }
+
+    4. Implement DisableSchedule() in repository
+
+    Add:
+
+    func (r *postgresTestRepository) DisableSchedule(
+        ctx context.Context,
+        testID string,
+    ) error {
+        _, err := r.pool.Exec(
+            ctx,
+            `UPDATE tests
+             SET schedule_enabled = false,
+                 next_run_at = NULL
+             WHERE uuid = $1`,
+            testID,
+        )
+
+        return err
+    }
+
+    Now the database operation says exactly what you mean.
+
+    Instead of:
+
+    Read entire test
+         ↓
+    Build entire configuration
+         ↓
+    Write entire configuration
+
+    you have:
+
+    UPDATE tests
+    SET schedule_enabled = false,
+        next_run_at = NULL
+    WHERE uuid = $1
+
+    Much safer.
+    5. Implement EnableSchedule() in repository
+
+    Add:
+
+    func (r *postgresTestRepository) EnableSchedule(
+        ctx context.Context,
+        testID string,
+        nextRun time.Time,
+    ) error {
+        _, err := r.pool.Exec(
+            ctx,
+            `UPDATE tests
+             SET schedule_enabled = true,
+                 next_run_at = $1
+             WHERE uuid = $2`,
+            nextRun.UTC(),
+            testID,
+        )
+
+        return err
+    }
+
+    Now you're only changing the two relevant columns.
+    6. Simplify disableSchedule()
+
+    Your current function is much larger than necessary.
+
+    After adding the repository method, it becomes:
+
+    func (hl *Handler) disableSchedule(
+        w http.ResponseWriter,
+        r *http.Request,
+        testID string,
+    ) {
+        if r.Method != http.MethodPost {
+            jsonResponse(w, http.StatusMethodNotAllowed, map[string]string{
+                "error": "POST only",
+            })
+            return
+        }
+
+        if _, err := hl.test.GetByID(r.Context(), testID); err != nil {
+            jsonResponse(w, http.StatusNotFound, map[string]string{
+                "error": "test not found",
+            })
+            return
+        }
+
+        if err := hl.test.DisableSchedule(r.Context(), testID); err != nil {
+            jsonResponse(w, http.StatusInternalServerError, map[string]string{
+                "error": "failed to disable schedule",
+            })
+            return
+        }
+
+        updated, err := hl.test.GetByID(r.Context(), testID)
+        if err != nil {
+            jsonResponse(w, http.StatusInternalServerError, map[string]string{
+                "error": "failed to load test",
+            })
+            return
+        }
+
+        jsonResponse(w, http.StatusOK, updated)
+    }
+
+    Notice what's gone:
+
+    repository.TestConfigUpdate{
+        Command: ...
+        TimeoutSeconds: ...
+        ...
+    }
+
+    Much cleaner.
+    7. Simplify enableSchedule() too
+
+    Your current enableSchedule() has the same full-config problem.
+
+    You still need to:
+
+        Get the test.
+
+        Verify it has a cron.
+
+        Calculate next_run_at.
+
+        Update scheduling.
+
+    So:
+
+    func (hl *Handler) enableSchedule(
+        w http.ResponseWriter,
+        r *http.Request,
+        testID string,
+    ) {
+        if r.Method != http.MethodPost {
+            jsonResponse(w, http.StatusMethodNotAllowed, map[string]string{
+                "error": "POST only",
+            })
+            return
+        }
+
+        test, err := hl.test.GetByID(r.Context(), testID)
+        if err != nil {
+            jsonResponse(w, http.StatusNotFound, map[string]string{
+                "error": "test not found",
+            })
+            return
+        }
+
+        if test.ScheduleCron == "" {
+            jsonResponse(w, http.StatusBadRequest, map[string]string{
+                "error": "cron is required before enabling schedule",
+            })
+            return
+        }
+
+        next, err := schedule.NextRun(
+            test.ScheduleCron,
+            time.Now().UTC(),
+        )
+        if err != nil {
+            jsonResponse(w, http.StatusBadRequest, map[string]string{
+                "error": "invalid cron expression",
+            })
+            return
+        }
+
+        if err := hl.test.EnableSchedule(
+            r.Context(),
+            testID,
+            next,
+        ); err != nil {
+            jsonResponse(w, http.StatusInternalServerError, map[string]string{
+                "error": "failed to enable schedule",
+            })
+            return
+        }
+
+        updated, err := hl.test.GetByID(r.Context(), testID)
+        if err != nil {
+            jsonResponse(w, http.StatusInternalServerError, map[string]string{
+                "error": "failed to load test",
+            })
+            return
+        }
+
+        jsonResponse(w, http.StatusOK, updated)
+    }
+
+    This is considerably easier to read.
+    8. The GetByID() after update
+
+    You currently do:
+
+    updated, err := hl.test.GetByID(...)
+
+    after updating.
+
+    This is actually fine.
+
+    You could optimize it later, but I wouldn't worry about it right now.
+
+    The benefit is that your API returns the actual database state:
+
+    POST /tests/A/schedule/stop
+
+           ↓
+
+    UPDATE database
+
+           ↓
+
+    GET database again
+
+           ↓
+
+    return updated Test
+
+    That's perfectly reasonable.
+
+    I'd keep it for now.
+    9. Add RowsAffected() checking
+
+    Your repository currently has:
+
+    _, err := r.pool.Exec(
+        ctx,
+        `UPDATE tests
+         SET schedule_enabled = false,
+             next_run_at = NULL
+         WHERE uuid = $1`,
+        testID,
+    )
+    return err
+
+    Technically, if the test doesn't exist, PostgreSQL can return:
+
+    RowsAffected = 0
+
+    without an error.
+
+    You already check existence in the handler, so this isn't a major issue, but repository-level correctness can be improved.
+
+    For example:
+
+    func (r *postgresTestRepository) DisableSchedule(
+        ctx context.Context,
+        testID string,
+    ) error {
+        tag, err := r.pool.Exec(
+            ctx,
+            `UPDATE tests
+             SET schedule_enabled = false,
+                 next_run_at = NULL
+             WHERE uuid = $1`,
+            testID,
+        )
+        if err != nil {
+            return err
+        }
+
+        if tag.RowsAffected() == 0 {
+            return pgx.ErrNoRows
+        }
+
+        return nil
+    }
+
+    You already import:
+
+    "github.com/jackc/pgx/v5"
+
+    so you can use pgx.ErrNoRows.
+    10. Consider making method names more explicit
+
+    Your current:
+
+    enableSchedule()
+    disableSchedule()
+
+    is fine.
+
+    I'd actually keep those.
+
+    For repository:
+
+    EnableSchedule()
+    DisableSchedule()
+
+    is also very clear.
+
+    I wouldn't over-engineer this.
+    11. Separate global scheduler pause from per-test schedule pause
+
+    This part of your design is already good.
+
+    You have:
+
+    func (s *Scheduler) Pause() {
+        s.paused.Store(true)
+    }
+
+    This is global.
+
+    Because Scheduler is one object:
+
+    sched := scheduler.NewScheduler(...)
+
+    and you pass that same scheduler into the handler:
+
+    handle := handler.NewHandler(
+        store,
+        testRepo,
+        testRunRepo,
+        q,
+        sched,
+        cfg,
+    )
+
+    So:
+
+    POST /scheduler/stop
+           ↓
+    sched.Pause()
+           ↓
+    s.paused = true
+           ↓
+    scheduler.tick() returns immediately
+           ↓
+    NO tests get scheduled
+
+    That's exactly what a global scheduler pause should do.
+    12. Per-test stop is completely different
+
+    Your:
+
+    POST /tests/{testID}/schedule/stop
+
+    doesn't call:
+
+    sched.Pause()
+
+    Instead it modifies the database:
+
+    Test A
+    schedule_enabled = false
+
+    Then the scheduler eventually does:
+
+    due, err := s.tests.ListDueScheduled(ctx, now)
+
+    which executes:
+
+    WHERE schedule_enabled = true
+
+    Therefore:
+
+    Test A → false → not returned
+    Test B → true  → returned
+    Test C → true  → returned
+
+    This is the correct separation.
+    13. One important concurrency issue in your scheduler
+
+    There's another improvement I would make after the above.
+
+    Your scheduler does:
+
+    due, err := s.tests.ListDueScheduled(ctx, now)
+
+    Then for every test:
+
+    s.fire(ctx, test, now)
+
+    Inside fire():
+
+    next, err := schedule.NextRun(...)
+
+    then:
+
+    UpdateNextRunAt(...)
+
+    then:
+
+    HasActiveJob(...)
+
+    then:
+
+    queue.Enqueue(...)
+
+    There is a potential race if you ever run multiple scheduler instances.
+
+    For example:
+
+    Scheduler A                  Scheduler B
+
+    ListDue → Test A             ListDue → Test A
+         ↓                            ↓
+    UpdateNextRunAt               UpdateNextRunAt
+         ↓                            ↓
+    HasActiveJob                  HasActiveJob
+         ↓                            ↓
+    Enqueue                       Enqueue
+
+    Both could potentially enqueue the same scheduled test.
+
+    If your application runs only one scheduler process, you're less exposed to this.
+
+    But if you eventually run multiple replicas, you should make claiming a scheduled run atomic in PostgreSQL.
+
+    That's a separate improvement I'd do later.
+    14. One more thing: schedule/stop doesn't stop a currently running test
+
+    This is important.
+
+    Your:
+
+    POST /tests/{id}/schedule/stop
+
+    only does:
+
+    schedule_enabled = false
+
+    It does not cancel a currently running job.
+
+    So:
+
+    Test A scheduled
+           ↓
+    Job starts running
+           ↓
+    POST /tests/A/schedule/stop
+           ↓
+    Future schedules stop
+           ↓
+    Current job continues
+
+    That's actually a reasonable design.
+
+    Your other endpoint:
+
+    POST /stop
+    {
+        "testId": "A"
+    }
+
+    is the one that actually stops active jobs:
+
+    active, err := hl.queue.ListActiveForTest(...)
+
+    and:
+
+    runtime.Cancel(job.UUID)
+
+    So you have two distinct concepts:
+
+    /schedule/stop
+        = don't create future scheduled jobs
+
+
+    /stop
+        = stop currently active jobs
+
+    That distinction is good.
+    What I would actually change now
+
+    I wouldn't change everything.
+
+    I'd do it in this order:
+    Step 1 — Keep your API routes
+
+    Keep:
+
+    POST /tests/{id}/schedule/start
+    POST /tests/{id}/schedule/stop
+    POST /scheduler/start
+    POST /scheduler/stop
+    POST /run
+    POST /stop
+
+    They're understandable.
+    Step 2 — Add repository methods
+
+    EnableSchedule(ctx, testID, nextRun)
+    DisableSchedule(ctx, testID)
+
+    Step 3 — Simplify the two handlers
+
+    Remove the giant:
+
+    repository.TestConfigUpdate{...}
+
+    from enableSchedule() and disableSchedule().
+    Step 4 — Leave GetByID() after update
+
+    It's fine for now.
+    Step 5 — Eventually clean up Tests()
+
+    You can extract route parsing or move to more explicit ServeMux patterns.
+    Step 6 — Later handle scheduler concurrency
+
+    Only becomes especially important when you have multiple application instances.
+    Final architecture
+
+    After these changes, your design becomes very clean:
+
+                             ┌─────────────────────┐
+                             │      Scheduler      │
+                             │                     │
+                             │ paused = true/false │
+                             └──────────┬──────────┘
+                                        │
+                                  global control
+                                        │
+                           /scheduler/start|stop
+                                        │
+                                        ↓
+                             ALL scheduled tests
+
+    And separately:
+
+    /tests/{id}/schedule/start
+                  │
+                  ↓
+           tests.schedule_enabled = true
+                  │
+                  ↓
+           calculate next_run_at
+
+    /tests/{id}/schedule/stop
+                  │
+                  ↓
+           tests.schedule_enabled = false
+                  │
+                  ↓
+           next_run_at = NULL
+
+    Then your scheduler query:
+
+    WHERE schedule_enabled = true
+
+    naturally gives you:
+
+    Test A → OFF → ignored
+    Test B → ON  → scheduled
+    Test C → ON  → scheduled
+
+    That is the cleanest part of your current architecture, and I would preserve it.
+

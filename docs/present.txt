@@ -1,0 +1,22 @@
+Then your resume can eventually say something like:
+Built a multi-runtime test execution platform supporting Playwright, k6, Node.js, Python and Go, 
+executing user-submitted artifacts in resource-isolated Docker containers with scheduled runs, 
+execution telemetry, screenshots and webhook delivery.
+
+And once you have measured numbers:
+Built a multi-runtime execution platform processing X executions/day across Y concurrent isolated 
+containers, with scheduled Playwright/k6 runs, screenshot/trace capture and signed webhook delivery.
+
+
+“One of the projects I’ve been working on is a BYOT platform — Bring Your Own Tests. 
+Users can upload a test artifact or ZIP, choose a runtime like Playwright, k6, Node, Python or Go, 
+schedule it to run periodically, and receive execution results through webhooks.
+
+The interesting part wasn't the dashboard. I designed the execution layer so every user artifact runs 
+in an isolated, resource-limited Docker container with controlled networking, CPU, memory and PID limits.
+For Playwright, the container captures screenshots and execution logs, which are persisted and surfaced 
+in the dashboard.
+
+I also had to think about the harder problems: arbitrary user code, Docker isolation, scheduling, 
+concurrent executions, timeouts, cleanup, webhook delivery and preventing test containers from 
+reaching internal infrastructure.”
