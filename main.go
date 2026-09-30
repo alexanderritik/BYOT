@@ -56,6 +56,7 @@ func main() {
 		cfg.MinioAccessKey,
 		cfg.MinioSecretKey,
 		cfg.MinioBucket,
+		cfg.MinioRegion,
 	)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to connect to minio")

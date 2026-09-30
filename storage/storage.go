@@ -23,10 +23,11 @@ type MinioStorage struct {
 	bucketName string
 }
 
-func NewMinioStorage(endpoint, accessKey, secretKey, bucket string) (*MinioStorage, error) {
+func NewMinioStorage(endpoint, accessKey, secretKey, bucket, region string) (*MinioStorage, error) {
 	minioClient, err := minio.New(endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
 		Secure: false,
+		Region: region,
 	})
 	if err != nil {
 		log.Error().Err(err).Msg("failed to connect to minio")

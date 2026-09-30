@@ -13,6 +13,7 @@ type Config struct {
 	MinioAccessKey    string
 	MinioSecretKey    string
 	MinioBucket       string
+	MinioRegion       string
 	DBUrl             string
 	MaxDockerMemoryMB int
 	MaxDockerCPUs     float64
@@ -45,6 +46,7 @@ func LoadConfig() Config {
 		MinioAccessKey:    os.Getenv("MINIO_ACCESS_KEY"),
 		MinioSecretKey:    os.Getenv("MINIO_SECRET_KEY"),
 		MinioBucket:       os.Getenv("MINIO_BUCKET"),
+		MinioRegion:       os.Getenv("MINIO_REGION"),
 		DBUrl:             os.Getenv("DB_URL"),
 		MaxDockerMemoryMB: maxMemory,
 		MaxDockerCPUs:     maxCPUs,
