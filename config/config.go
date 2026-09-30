@@ -9,46 +9,120 @@ import (
 )
 
 type Config struct {
-	MinioEndpoint     string
-	MinioAccessKey    string
-	MinioSecretKey    string
-	MinioBucket       string
-	MinioRegion       string
+	StorageProvider string
+
+	// MinIO
+	MinioEndpoint  string
+	MinioAccessKey string
+	MinioSecretKey string
+	MinioBucket    string
+	MinioRegion    string
+
+	// Supabase
+	SupabaseURL    string
+	SupabaseKey    string
+	SupabaseBucket string
+
 	DBUrl             string
 	MaxDockerMemoryMB int
 	MaxDockerCPUs     float64
 }
 
 func LoadConfig() Config {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal(err)
+
+	if err := godotenv.Load(); err != nil {
+		log.Printf(
+			"warning: .env file not found: %v",
+			err,
+		)
 	}
 
-	println("Loading config...", os.Getenv("MINIO_ENDPOINT"), os.Getenv("MINIO_ACCESS_KEY"), os.Getenv("MINIO_SECRET_KEY"), os.Getenv("MINIO_BUCKET"), os.Getenv("DB_URL"))
+	maxMemory := 2048
 
-	maxMemory := 2048 // default 2GB
-	if val := os.Getenv("MAX_DOCKER_MEMORY_MB"); val != "" {
-		if parsed, err := strconv.Atoi(val); err == nil && parsed > 0 {
+	if value := os.Getenv(
+		"MAX_DOCKER_MEMORY_MB",
+	); value != "" {
+
+		if parsed, err := strconv.Atoi(value); err == nil &&
+			parsed > 0 {
+
 			maxMemory = parsed
 		}
 	}
 
-	maxCPUs := 4.0 // default 4 CPUs
-	if val := os.Getenv("MAX_DOCKER_CPUS"); val != "" {
-		if parsed, err := strconv.ParseFloat(val, 64); err == nil && parsed > 0 {
+	maxCPUs := 4.0
+
+	if value := os.Getenv(
+		"MAX_DOCKER_CPUS",
+	); value != "" {
+
+		if parsed, err := strconv.ParseFloat(
+			value,
+			64,
+		); err == nil && parsed > 0 {
+
 			maxCPUs = parsed
 		}
 	}
 
 	return Config{
-		MinioEndpoint:     os.Getenv("MINIO_ENDPOINT"),
-		MinioAccessKey:    os.Getenv("MINIO_ACCESS_KEY"),
-		MinioSecretKey:    os.Getenv("MINIO_SECRET_KEY"),
-		MinioBucket:       os.Getenv("MINIO_BUCKET"),
-		MinioRegion:       os.Getenv("MINIO_REGION"),
-		DBUrl:             os.Getenv("DB_URL"),
+
+		// Storage
+		StorageProvider: getEnv(
+			"STORAGE_PROVIDER",
+			"minio",
+		),
+
+		// MinIO
+		MinioEndpoint: os.Getenv(
+			"MINIO_ENDPOINT",
+		),
+		MinioAccessKey: os.Getenv(
+			"MINIO_ACCESS_KEY",
+		),
+		MinioSecretKey: os.Getenv(
+			"MINIO_SECRET_KEY",
+		),
+		MinioBucket: os.Getenv(
+			"MINIO_BUCKET",
+		),
+		MinioRegion: getEnv(
+			"MINIO_REGION",
+			"us-east-1",
+		),
+
+		// Supabase
+		SupabaseURL: os.Getenv(
+			"SUPABASE_URL",
+		),
+		SupabaseKey: os.Getenv(
+			"SUPABASE_KEY",
+		),
+		SupabaseBucket: os.Getenv(
+			"SUPABASE_BUCKET",
+		),
+
+		// Database
+		DBUrl: os.Getenv(
+			"DB_URL",
+		),
+
+		// Docker
 		MaxDockerMemoryMB: maxMemory,
 		MaxDockerCPUs:     maxCPUs,
 	}
+}
+
+func getEnv(
+	key string,
+	fallback string,
+) string {
+
+	value := os.Getenv(key)
+
+	if value == "" {
+		return fallback
+	}
+
+	return value
 }

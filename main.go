@@ -47,20 +47,59 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to connect to postgres")
 	}
 
-	if err := runMigrations(cfg.DBUrl); err != nil {
-		log.Fatal().Err(err).Msg("migration failed")
+	// if err := runMigrations(cfg.DBUrl); err != nil {
+	// 	log.Fatal().Err(err).Msg("migration failed")
+	// }
+
+	var store storage.Storage
+
+	switch cfg.StorageProvider {
+
+	case "minio":
+
+		store, err = storage.NewMinioStorage(
+			cfg.MinioEndpoint,
+			cfg.MinioAccessKey,
+			cfg.MinioSecretKey,
+			cfg.MinioBucket,
+			cfg.MinioRegion,
+		)
+
+	case "supabase":
+
+		store, err = storage.NewSupabaseStorage(
+			cfg.SupabaseURL,
+			cfg.SupabaseKey,
+			cfg.SupabaseBucket,
+		)
+
+	default:
+
+		log.Fatal().
+			Str(
+				"provider",
+				cfg.StorageProvider,
+			).
+			Msg("unsupported storage provider")
 	}
 
-	store, err := storage.NewMinioStorage(
-		cfg.MinioEndpoint,
-		cfg.MinioAccessKey,
-		cfg.MinioSecretKey,
-		cfg.MinioBucket,
-		cfg.MinioRegion,
-	)
 	if err != nil {
-		log.Fatal().Err(err).Msg("failed to connect to minio")
+
+		log.Fatal().
+			Err(err).
+			Str(
+				"provider",
+				cfg.StorageProvider,
+			).
+			Msg("failed to initialize storage")
 	}
+
+	log.Info().
+		Str(
+			"provider",
+			cfg.StorageProvider,
+		).
+		Msg("storage initialized")
 
 	testRepo := repository.NewTestRepository(pool)
 	testRunRepo := repository.NewTestRunRepository(pool)
