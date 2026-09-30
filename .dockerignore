@@ -1,0 +1,14 @@
+.git
+.claude
+.env
+.env.*
+!.env.example
+mini-lambda
+s.txt
+docs
+interview
+script
+testfunction
+*.md
+Dockerfile
+docker-compose.yml
