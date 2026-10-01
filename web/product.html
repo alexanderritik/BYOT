@@ -1,4 +1,5 @@
 <title>BYOT Control Room</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230c0c0c'/%3E%3Cpath d='M14 14h36v10H37v28H27V24H14z' fill='%2300e87a'/%3E%3C/svg%3E">
 
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
 
@@ -90,7 +91,7 @@ button,input,select{font-family:inherit;font-size:inherit;color:inherit;}
 
 .rail{width:216px;flex-shrink:0;border-right:1px solid var(--border);padding:1.25rem 1rem;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;}
 
-.brand{display:flex;align-items:center;gap:.55rem;margin-bottom:.25rem;}
+.brand{display:flex;align-items:center;gap:.55rem;margin-bottom:.25rem;color:inherit;text-decoration:none;}
 
 .brand-dot{width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent);}
 
@@ -100,7 +101,7 @@ button,input,select{font-family:inherit;font-size:inherit;color:inherit;}
 
 .nav{display:flex;flex-direction:column;gap:.15rem;}
 
-.nav-item{display:flex;align-items:center;gap:.65rem;padding:.55rem .65rem;border-radius:6px;border:none;background:transparent;color:var(--text-muted);text-align:left;cursor:pointer;font-size:.85rem;font-weight:500;}
+.nav-item{display:flex;align-items:center;gap:.65rem;padding:.55rem .65rem;border-radius:6px;border:none;background:transparent;color:var(--text-muted);text-align:left;cursor:pointer;font-size:.85rem;font-weight:500;text-decoration:none;}
 
 .nav-item svg{width:15px;height:15px;flex-shrink:0;}
 
@@ -470,11 +471,19 @@ tbody tr.clickable:hover{background:var(--surface-2);}
 
   <div class="rail">
 
-    <div class="brand"><span class="brand-dot"></span><span class="brand-name">BYO<span style="color:var(--accent)">T</span></span></div>
+    <a class="brand" href="/" title="Back to home"><span class="brand-dot"></span><span class="brand-name">BYO<span style="color:var(--accent)">T</span></span></a>
 
     <div class="brand-tag">live · connected to API</div>
 
     <div class="nav">
+
+      <a class="nav-item" href="/">
+
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 9.5 10 3.5l7 6"/><path d="M5 8v8.5h3.5V12h3v4.5H15V8"/></svg>
+
+        Home
+
+      </a>
 
       <button class="nav-item active" data-nav="dashboard" onclick="go('dashboard')">
 
@@ -494,7 +503,7 @@ tbody tr.clickable:hover{background:var(--surface-2);}
 
     </div>
 
-    <div class="rail-foot">Server <code>:3000</code><br>Runtimes <code>go</code> · <code>node</code><br><span class="tid">▶ Play / ■ Stop = cron on/off</span></div>
+    <div class="rail-foot">With Love Ritik ❤️</div>
 
   </div>
 

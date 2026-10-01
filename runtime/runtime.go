@@ -23,27 +23,27 @@ type RuntimeSpec struct {
 
 var runtimes = map[string]RuntimeSpec{
 	"node": {
-		Image:          "node:18-alpine",
+		Image:          ImageNode,
 		Command:        "node ./artifact",
 		NetworkEnabled: false,
 	},
 	"go": {
-		Image:          "golang:1.24-alpine",
+		Image:          ImageGo,
 		Command:        "./artifact",
 		NetworkEnabled: false,
 	},
 	"python": {
-		Image:          "python:3.12-alpine",
+		Image:          ImagePython,
 		Command:        "python ./artifact",
 		NetworkEnabled: false,
 	},
 	"k6": {
-		Image:          "grafana/k6:latest",
+		Image:          ImageK6,
 		Command:        "k6 run ./artifact",
 		NetworkEnabled: true,
 	},
 	"playwright": {
-		Image:          "mcr.microsoft.com/playwright:v1.49.1-jammy",
+		Image:          ImagePlaywright,
 		Command:        "npx playwright test",
 		NetworkEnabled: true,
 	},

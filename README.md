@@ -122,13 +122,11 @@ Content-Type: multipart/form-data
 |---|---|---|---|
 | `binary` | file | yes | Compiled test binary |
 | `runtime` | string | yes | `go` or `node` |
-| `severity` | string | yes | `P0` `P1` `P2` `P3` |
 
 ```bash
 curl -X POST http://localhost:3000/uploadBinary \
   -F "binary=@./e2e/checkout.test" \
-  -F "runtime=node" \
-  -F "severity=P0"
+  -F "runtime=node"
 
 # → { "id": "a3f8b2c1-...", "message": "binary uploaded successfully" }
 ```
@@ -149,17 +147,6 @@ Output is stdout/stderr from the container, timestamped per line:
 2026-05-03T10:30:04Z [stdout] ✓ Cart updated
 2026-05-03T10:30:06Z [stderr] ✗ Pay button not found
 ```
-
----
-
-## Severity levels
-
-| Level | Meaning |
-|---|---|
-| P0 | Wake me up at 3am — production is down |
-| P1 | Critical path broken, escalate fast |
-| P2 | Degraded, alert during business hours *(default)* |
-| P3 | Nice to know — weekly digest |
 
 ---
 
@@ -192,7 +179,7 @@ HTTP Server (:3000)
        └─ Upload logs to MinIO  ({uuid}/logs/{timestamp}.txt)
 
 PostgreSQL
-  ├─ tests       (uuid, runtime, severity, binary_url, created_at)
+  ├─ tests       (uuid, runtime, binary_url, created_at)
   └─ tests_runs  (uuid, test_id, status, duration_ms, log_url, ...)
 ```
 

@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BYOT — Monitor your production business flows, not just your code</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230c0c0c'/%3E%3Cpath d='M14 14h36v10H37v28H27V24H14z' fill='%2300e87a'/%3E%3C/svg%3E">
   <meta name="description" content="Upload your existing Playwright, k6, or any test binary. BYOT runs it on a schedule, isolated in Docker, and alerts you when something actually breaks. Open-source, self-hostable.">
   <meta property="og:title" content="BYOT — Bring Your Own Tests">
   <meta property="og:description" content="Run your existing tests in production. No rewrites. No lock-in.">
@@ -154,19 +155,18 @@ footer { border-top: 1px solid var(--border); padding: 2.5rem; display: flex; al
   <ul class="nav-links">
     <li><a href="#how-it-works">How it works</a></li>
     <li><a href="#features">Features</a></li>
-    <li><a href="#pricing">Pricing</a></li>
     <li><a href="https://github.com/alexanderritik/fnx#readme">Docs</a></li>
     <li><a href="https://github.com/alexanderritik/fnx">GitHub</a></li>
   </ul>
-  <a href="/app" class="nav-btn">Open app</a>
+  <a href="/app" class="nav-btn">Live app</a>
 </nav>
 
 <section class="hero">
-  <div class="pill"><div class="pill-dot"></div>open source · self-hostable · production-ready</div>
+  <div class="pill"><div class="pill-dot"></div>open source · self-hostable · active-development</div>
   <h1>Your tests.<br><span class="ghost">Running in</span> <span class="green">production.</span></h1>
-  <p class="hero-p">Upload your existing Playwright, k6, or any test binary. BYOT runs it on a schedule, isolated in Docker, and wakes you up on Slack when something actually breaks.</p>
+  <p class="hero-p">Upload your existing Playwright, k6, or any test binary. BYOT runs it on a schedule, isolated in Docker, and wakes you up on Slack/Pagerduty/webhook when something actually breaks.</p>
   <div class="hero-btns">
-    <a href="/app" class="btn-g">Open control room →</a>
+    <a href="/app" class="btn-g">Open Playground →</a>
     <a href="https://github.com/alexanderritik/fnx" class="btn-o">$ docker compose up byot</a>
   </div>
 
@@ -177,11 +177,11 @@ footer { border-top: 1px solid var(--border); padding: 2.5rem; display: flex; al
     </div>
     <div class="term-body">
       <div class="tc"># Upload your existing Playwright test</div>
-      <div class="tp"><em>$</em> byot deploy ./e2e/checkout.test --runtime node --severity P0</div>
+      <div class="tp"><em>$</em> byot deploy ./e2e/checkout.test --runtime node</div>
       <div class="to">✓ Binary uploaded  →  fnx/a3f8b2/binary</div>
       <div class="to">✓ Scheduled every 30m</div>
       <div class="to">✓ Slack webhook configured</div>
-      <div class="ts">→ Test ID: a3f8b2c1 · P0 · node runtime</div>
+      <div class="ts">→ Test ID: a3f8b2c1 · node runtime</div>
       <br>
       <div class="tc"># 30 minutes later — runs automatically</div>
       <div class="to">2026-05-03T10:30:00Z [stdout] Starting checkout flow...</div>
@@ -229,13 +229,13 @@ footer { border-top: 1px solid var(--border); padding: 2.5rem; display: flex; al
     </div>
     <div class="feat">
       <div class="feat-icon fi-o">◈</div>
-      <div class="feat-t">Severity levels</div>
-      <div class="feat-d">P0 wakes you at 3am. P3 goes in the weekly digest. You decide what matters.</div>
+      <div class="feat-t">Failure thresholds</div>
+      <div class="feat-d">Alert only after N consecutive failures, and get a recovery ping when it passes again. No flaky-test noise.</div>
     </div>
     <div class="feat">
       <div class="feat-icon fi-b">⌘</div>
       <div class="feat-t">Alerts everywhere</div>
-      <div class="feat-d">Slack, PagerDuty, webhooks. Route P0 to on-call, P2 to a channel. Full control.</div>
+      <div class="feat-d">Slack, PagerDuty, webhooks. Set a destination per test. Full control.</div>
     </div>
   </div>
 </section>
@@ -254,7 +254,7 @@ footer { border-top: 1px solid var(--border); padding: 2.5rem; display: flex; al
     <div class="step">
       <div class="step-n">02</div>
       <div class="step-t">Configure</div>
-      <div class="step-d">Set schedule, severity, alert destinations. Takes 2 minutes.</div>
+      <div class="step-d">Set schedule, timeout, alert destinations. Takes 2 minutes.</div>
     </div>
     <div class="step">
       <div class="step-n">03</div>
@@ -353,55 +353,6 @@ footer { border-top: 1px solid var(--border); padding: 2.5rem; display: flex; al
 
 <hr class="div">
 
-<section class="sec" id="pricing">
-  <div class="sec-label">pricing</div>
-  <div class="sec-h">Simple pricing.<br>No surprises.</div>
-  <div class="price-grid">
-    <div class="pc">
-      <div class="pc-tier">OPEN SOURCE</div>
-      <div class="pc-price">Free</div>
-      <div class="pc-per">self-hosted forever</div>
-      <ul class="pc-list">
-        <li>Unlimited tests</li>
-        <li>All runtimes</li>
-        <li>Slack + webhook alerts</li>
-        <li>Full source code</li>
-        <li>Community support</li>
-      </ul>
-      <a href="https://github.com/alexanderritik/fnx#self-hosting" class="pc-btn">Deploy yourself</a>
-    </div>
-    <div class="pc feat-pc">
-      <div class="pc-badge">MOST POPULAR</div>
-      <div class="pc-tier">CLOUD</div>
-      <div class="pc-price"><sup>$</sup>29</div>
-      <div class="pc-per">per month · up to 10 seats</div>
-      <ul class="pc-list">
-        <li>Everything in open source</li>
-        <li>Managed infrastructure</li>
-        <li>PagerDuty integration</li>
-        <li>90-day execution history</li>
-        <li>Email support</li>
-      </ul>
-      <a href="#" class="pc-btn g">Start free trial</a>
-    </div>
-    <div class="pc">
-      <div class="pc-tier">ENTERPRISE</div>
-      <div class="pc-price">Custom</div>
-      <div class="pc-per">for large teams</div>
-      <ul class="pc-list">
-        <li>Everything in Cloud</li>
-        <li>SSO / SAML</li>
-        <li>Custom data retention</li>
-        <li>SLA guarantee</li>
-        <li>Dedicated support</li>
-      </ul>
-      <a href="#" class="pc-btn">Talk to us</a>
-    </div>
-  </div>
-</section>
-
-<hr class="div">
-
 <section class="sec">
   <div class="sec-label">from the community</div>
   <div class="sec-h">Engineers love it.</div>
@@ -434,7 +385,7 @@ footer { border-top: 1px solid var(--border); padding: 2.5rem; display: flex; al
   <h2>Stop finding out<br>from your customers.</h2>
   <p>Deploy BYOT in 5 minutes. Your existing tests start monitoring production today.</p>
   <div class="hero-btns">
-    <a href="/app" class="btn-g">Open control room →</a>
+    <a href="/app" class="btn-g">Open Playground→</a>
     <a href="https://github.com/alexanderritik/fnx" class="btn-o">★ Star on GitHub</a>
   </div>
 </section>

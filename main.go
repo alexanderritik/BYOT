@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"syscall"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/alexanderritik/mini-lambda/handler"
 	"github.com/alexanderritik/mini-lambda/queue"
 	"github.com/alexanderritik/mini-lambda/repository"
+	"github.com/alexanderritik/mini-lambda/runtime"
 	"github.com/alexanderritik/mini-lambda/scheduler"
 	"github.com/alexanderritik/mini-lambda/storage"
 	"github.com/alexanderritik/mini-lambda/web"
@@ -39,7 +41,23 @@ func runMigrations(dbURL string) error {
 	return nil
 }
 
+func pullImages() {
+	for _, img := range runtime.Images {
+		log.Info().Str("image", img).Msg("pulling")
+		cmd := exec.Command("docker", "pull", img)
+		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+		if err := cmd.Run(); err != nil {
+			log.Fatal().Err(err).Str("image", img).Msg("pull failed")
+		}
+	}
+}
+
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "pull-images" {
+		pullImages()
+		return
+	}
+
 	cfg := config.LoadConfig()
 
 	pool, err := db.Connect(cfg.DBUrl)
