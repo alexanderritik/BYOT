@@ -1,6 +1,9 @@
 package runtime
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+)
 
 func dockerRunArgs(workspace string, spec RuntimeSpec) []string {
 	network := "none"
@@ -34,6 +37,17 @@ func dockerRunArgs(workspace string, spec RuntimeSpec) []string {
 		"--memory=" + memory,
 		"--cpus=" + cpus,
 		"--pids-limit=128",
+		// Sandbox hardening: untrusted code runs unprivileged, with no
+		// capabilities, a read-only root fs and only /app and /tmp writable.
+		"--cap-drop=ALL",
+		"--security-opt=no-new-privileges",
+		"--read-only",
+		"--tmpfs=/tmp:rw,exec,nosuid,size=256m",
+		// Same uid as the host process so it owns the mounted workspace
+		// (CAP_DAC_OVERRIDE is dropped, so root-in-container can't bypass perms).
+		fmt.Sprintf("--user=%d:%d", os.Getuid(), os.Getgid()),
+		"-e",
+		"HOME=/tmp",
 		"-v",
 		fmt.Sprintf("%s:/app", workspace),
 		"-w",

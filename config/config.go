@@ -19,9 +19,11 @@ type Config struct {
 	MinioRegion    string
 
 	// Supabase
-	SupabaseURL    string
-	SupabaseKey    string
-	SupabaseBucket string
+	SupabaseURL string
+	SupabaseKey string
+	// Public publishable key (sb_publishable_...); with SupabaseURL it enables auth on upload.
+	SupabasePublishableKey string
+	SupabaseBucket         string
 
 	DBUrl             string
 	MaxDockerMemoryMB int
@@ -100,6 +102,9 @@ func LoadConfig() Config {
 		),
 		SupabaseBucket: os.Getenv(
 			"SUPABASE_BUCKET",
+		),
+		SupabasePublishableKey: os.Getenv(
+			"SUPABASE_PUBLISHABLE_KEY",
 		),
 
 		// Database

@@ -34,3 +34,12 @@ func contains(slice []string, s string) bool {
 	}
 	return false
 }
+
+func TestDockerRunArgs_Hardening(t *testing.T) {
+	args := dockerRunArgs("/tmp/ws", RuntimeSpec{Image: "alpine", Command: "./artifact"})
+	for _, want := range []string{"--cap-drop=ALL", "--security-opt=no-new-privileges", "--read-only"} {
+		if !contains(args, want) {
+			t.Fatalf("expected %s, got %v", want, args)
+		}
+	}
+}

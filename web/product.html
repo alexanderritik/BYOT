@@ -461,6 +461,16 @@ tbody tr.clickable:hover{background:var(--surface-2);}
 
 .toast .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);margin-top:.35rem;flex-shrink:0;}
 
+
+/* ---- auth modal ---- */
+.auth-back{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:100;padding:1rem;}
+.auth-back.open{display:flex;}
+.auth-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1.5rem;width:100%;max-width:360px;display:flex;flex-direction:column;gap:.9rem;}
+.auth-card h3{margin:0;font-size:1rem;}
+.auth-card p{margin:0;font-size:.78rem;color:var(--text-muted);}
+.auth-err{color:var(--danger);font-size:.76rem;min-height:1em;}
+.auth-switch{background:none;border:none;color:var(--accent);cursor:pointer;font-size:.76rem;padding:0;text-align:left;}
+.rail-user{display:flex;align-items:center;justify-content:space-between;gap:.5rem;margin-bottom:.6rem;word-break:break-all;}
 </style>
 
 
@@ -503,7 +513,7 @@ tbody tr.clickable:hover{background:var(--surface-2);}
 
     </div>
 
-    <div class="rail-foot">With Love Ritik ❤️</div>
+    <div class="rail-foot"><div class="rail-user" id="rail-user"></div>With Love Ritik ❤️</div>
 
   </div>
 
@@ -512,6 +522,21 @@ tbody tr.clickable:hover{background:var(--surface-2);}
 </div>
 
 
+
+<div class="auth-back" id="auth-back">
+  <form class="auth-card" id="auth-form" onsubmit="authSubmit(event)">
+    <h3 id="auth-title">Sign in to upload</h3>
+    <p>Browsing is open. An account is only needed to upload tests.</p>
+    <div class="field"><label for="auth-email">Email</label><input id="auth-email" type="email" required autocomplete="email"></div>
+    <div class="field"><label for="auth-pass">Password</label><input id="auth-pass" type="password" required minlength="6" autocomplete="current-password"></div>
+    <div class="auth-err" id="auth-err"></div>
+    <div style="display:flex;gap:.5rem">
+      <button class="btn btn-accent" id="auth-btn" type="submit">Sign in</button>
+      <button class="btn btn-ghost" type="button" onclick="authClose()">Cancel</button>
+    </div>
+    <button class="auth-switch" type="button" id="auth-switch" onclick="authToggle()">No account? Sign up</button>
+  </form>
+</div>
 
 <script>
 
@@ -526,6 +551,100 @@ function esc(s){ return (s??'').toString().replace(/[&<>"']/g, c=>({'&':'&amp;',
 function shortId(id){ return (id||'').slice(0,8); }
 
 
+
+
+/* ---- Supabase auth (REST, no SDK). Only prompted when uploading. ---- */
+const auth = { cfg: null, session: null, signup: false, waiter: null };
+try { auth.session = JSON.parse(localStorage.getItem('byot_session') || 'null'); } catch {}
+
+function authSave(sess){
+  auth.session = sess;
+  try { sess ? localStorage.setItem('byot_session', JSON.stringify(sess)) : localStorage.removeItem('byot_session'); } catch {}
+  authRender();
+}
+
+async function authConfig(){
+  if (!auth.cfg){
+    try { auth.cfg = await (await fetch('/auth/config')).json(); } catch { auth.cfg = { enabled:false }; }
+  }
+  return auth.cfg;
+}
+
+async function authCall(path, body){
+  const res = await fetch(auth.cfg.url + '/auth/v1' + path, {
+    method:'POST',
+    headers:{ 'apikey': auth.cfg.publishable_key, 'Content-Type':'application/json' },
+    body: JSON.stringify(body)
+  });
+  const j = await res.json().catch(()=>({}));
+  if (!res.ok) throw new Error(j.msg || j.error_description || j.message || 'Authentication failed');
+  return j;
+}
+
+function toSession(j){
+  return { access_token:j.access_token, refresh_token:j.refresh_token,
+           expires_at: Date.now() + (j.expires_in||3600)*1000, email:(j.user&&j.user.email)||'' };
+}
+
+// Returns a valid access token, or null if the user must sign in.
+async function authToken(){
+  const s = auth.session;
+  if (!s) return null;
+  if (Date.now() < s.expires_at - 30000) return s.access_token;
+  try {
+    const j = await authCall('/token?grant_type=refresh_token', { refresh_token: s.refresh_token });
+    authSave({ ...toSession(j), email: s.email });
+    return auth.session.access_token;
+  } catch { authSave(null); return null; }
+}
+
+// Resolves with a token (prompting sign-in if needed) or null when auth is
+// disabled server-side or the user cancels.
+async function ensureAuth(){
+  const cfg = await authConfig();
+  if (!cfg.enabled) return { token:null, ok:true };
+  const t = await authToken();
+  if (t) return { token:t, ok:true };
+  return new Promise(resolve => { auth.waiter = resolve; authOpen(); });
+}
+
+function authOpen(){ document.getElementById('auth-err').textContent=''; document.getElementById('auth-back').classList.add('open'); document.getElementById('auth-email').focus(); }
+function authClose(){ document.getElementById('auth-back').classList.remove('open'); if (auth.waiter){ auth.waiter({ token:null, ok:false }); auth.waiter=null; } }
+function authToggle(){
+  auth.signup = !auth.signup;
+  document.getElementById('auth-title').textContent = auth.signup ? 'Create an account' : 'Sign in to upload';
+  document.getElementById('auth-btn').textContent = auth.signup ? 'Sign up' : 'Sign in';
+  document.getElementById('auth-switch').textContent = auth.signup ? 'Have an account? Sign in' : 'No account? Sign up';
+  document.getElementById('auth-pass').autocomplete = auth.signup ? 'new-password' : 'current-password';
+}
+
+async function authSubmit(e){
+  e.preventDefault();
+  const email = document.getElementById('auth-email').value.trim();
+  const password = document.getElementById('auth-pass').value;
+  const err = document.getElementById('auth-err'); err.textContent='';
+  const btn = document.getElementById('auth-btn'); btn.disabled = true;
+  try {
+    let j = auth.signup ? await authCall('/signup', { email, password })
+                        : await authCall('/token?grant_type=password', { email, password });
+    if (!j.access_token) { err.textContent = 'Check your email to confirm your account, then sign in.'; if (auth.signup) authToggle(); return; }
+    authSave(toSession(j));
+    document.getElementById('auth-back').classList.remove('open');
+    if (auth.waiter){ const w = auth.waiter; auth.waiter=null; w({ token:auth.session.access_token, ok:true }); }
+  } catch (ex) { err.textContent = ex.message; }
+  finally { btn.disabled = false; }
+}
+
+function authSignOut(){ authSave(null); toast('Signed out'); }
+
+function authRender(){
+  const el = document.getElementById('rail-user');
+  if (!el) return;
+  el.innerHTML = auth.session
+    ? `<span>${esc(auth.session.email)}</span><button class="btn btn-ghost btn-sm" onclick="authSignOut()">Sign out</button>`
+    : '';
+}
+document.addEventListener('DOMContentLoaded', authRender);
 
 async function apiJson(url, opts){
 
@@ -1634,13 +1753,19 @@ async function submitUpload(e){
 
   try {
 
-    const res = await apiJson('/uploadBinary', { method: 'POST', body: fd });
+    const a = await ensureAuth();
+
+    if (!a.ok){ btn.disabled = false; return; }
+
+    const res = await apiJson('/uploadBinary', { method: 'POST', body: fd, headers: a.token ? { Authorization: 'Bearer ' + a.token } : {} });
 
     toast(`<strong>${esc(displayName)}</strong> uploaded`);
 
     await go('test', res.id);
 
   } catch (err) {
+
+    if (err.message === 'authentication required') authSave(null);
 
     toast(esc(err.message));
 

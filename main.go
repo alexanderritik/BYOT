@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/alexanderritik/mini-lambda/auth"
 	"github.com/alexanderritik/mini-lambda/config"
 	"github.com/alexanderritik/mini-lambda/db"
 	"github.com/alexanderritik/mini-lambda/handler"
@@ -65,6 +66,7 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to connect to postgres")
 	}
 
+	// migrate -path ./migrations -database "$DATABASE_URL" up
 	// if err := runMigrations(cfg.DBUrl); err != nil {
 	// 	log.Fatal().Err(err).Msg("migration failed")
 	// }
@@ -138,10 +140,16 @@ func main() {
 	go w.Start(ctx)
 	go sched.Start(ctx)
 
+	verifier := auth.New(cfg.SupabaseURL, cfg.SupabasePublishableKey)
+	if !verifier.Enabled() {
+		log.Warn().Msg("SUPABASE_URL/SUPABASE_PUBLISHABLE_KEY not set: upload authentication is DISABLED")
+	}
+
 	mux := http.NewServeMux()
+	mux.HandleFunc("/auth/config", verifier.PublicConfig)
 	web.Register(mux)
 	mux.HandleFunc("/health", handle.IsHealth)
-	mux.HandleFunc("/uploadBinary", handle.UploadBinary)
+	mux.HandleFunc("/uploadBinary", verifier.Require(handle.UploadBinary))
 	mux.HandleFunc("/run", handle.Run)
 	mux.HandleFunc("/stop", handle.Stop)
 	mux.HandleFunc("/scheduler/status", handle.SchedulerStatus)
