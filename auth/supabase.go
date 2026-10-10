@@ -74,6 +74,24 @@ func (v *Verifier) Require(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// RequireWrites leaves read-only requests (GET/HEAD/OPTIONS) open and requires
+// authentication for anything that can change state. Wrap every API route with
+// it so a new write endpoint is protected by default.
+func (v *Verifier) RequireWrites(next http.HandlerFunc) http.HandlerFunc {
+	if v == nil {
+		return next
+	}
+	protected := v.Require(next)
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet, http.MethodHead, http.MethodOptions:
+			next(w, r)
+		default:
+			protected(w, r)
+		}
+	}
+}
+
 func (v *Verifier) valid(ctx context.Context, token string) bool {
 	now := time.Now()
 	v.mu.Lock()

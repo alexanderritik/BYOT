@@ -17,6 +17,7 @@ import (
 	"github.com/alexanderritik/mini-lambda/repository"
 	"github.com/alexanderritik/mini-lambda/runtime"
 	"github.com/alexanderritik/mini-lambda/scheduler"
+	"github.com/alexanderritik/mini-lambda/secrets"
 	"github.com/alexanderritik/mini-lambda/storage"
 	"github.com/alexanderritik/mini-lambda/web"
 	"github.com/alexanderritik/mini-lambda/worker"
@@ -121,7 +122,21 @@ func main() {
 		).
 		Msg("storage initialized")
 
+	verifier := auth.New(cfg.SupabaseURL, cfg.SupabasePublishableKey)
+	if !verifier.Enabled() {
+		log.Warn().Msg("SUPABASE_URL/SUPABASE_PUBLISHABLE_KEY not set: upload authentication is DISABLED")
+	}
+
+	box, err := secrets.New(cfg.SecretsKey)
+	if err != nil {
+		log.Fatal().Err(err).Msg("invalid SECRETS_KEY")
+	}
+	if !box.Enabled() {
+		log.Warn().Msg("SECRETS_KEY not set: secret environment variables are DISABLED (plain variables still work)")
+	}
+
 	testRepo := repository.NewTestRepository(pool)
+	envRepo := repository.NewEnvRepository(pool)
 	testRunRepo := repository.NewTestRunRepository(pool)
 	jobRepo := repository.NewJobRepository(pool)
 	screenshotRepo := repository.NewScreenshotRepository(pool)
@@ -129,38 +144,34 @@ func main() {
 	q := queue.NewQueue(jobRepo)
 
 	sched := scheduler.NewScheduler(testRepo, q, jobRepo, 30*time.Second)
-	handle := handler.NewHandler(store, testRepo, testRunRepo, screenshotRepo, q, sched, cfg)
+	handle := handler.NewHandler(store, testRepo, testRunRepo, screenshotRepo, q, sched, cfg, envRepo, box, verifier.Require)
 
 	// Create and start worker
 	workerID := uuid.NewString()
-	w := worker.NewWorker(workerID, q, testRepo, testRunRepo, screenshotRepo, store)
+	w := worker.NewWorker(workerID, q, testRepo, testRunRepo, screenshotRepo, store, envRepo, box)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	go w.Start(ctx)
 	go sched.Start(ctx)
 
-	verifier := auth.New(cfg.SupabaseURL, cfg.SupabasePublishableKey)
-	if !verifier.Enabled() {
-		log.Warn().Msg("SUPABASE_URL/SUPABASE_PUBLISHABLE_KEY not set: upload authentication is DISABLED")
-	}
-
 	mux := http.NewServeMux()
 	mux.HandleFunc("/auth/config", verifier.PublicConfig)
+
 	web.Register(mux)
-	mux.HandleFunc("/health", handle.IsHealth)
-	mux.HandleFunc("/uploadBinary", verifier.Require(handle.UploadBinary))
-	mux.HandleFunc("/run", handle.Run)
-	mux.HandleFunc("/stop", handle.Stop)
-	mux.HandleFunc("/scheduler/status", handle.SchedulerStatus)
-	mux.HandleFunc("/scheduler/stop", handle.SchedulerStop)
-	mux.HandleFunc("/scheduler/start", handle.SchedulerStart)
-	mux.HandleFunc("/tests", handle.Tests)
-	mux.HandleFunc("/tests/", handle.Tests)
-	mux.HandleFunc("/runs/", handle.RunRoutes)
-	mux.HandleFunc("/status/", handle.JobStatus)
-	mux.HandleFunc("/screenshots/", handle.ListScreenshots)
-	mux.HandleFunc("/screenshot/", handle.DownloadScreenshot)
+	mux.HandleFunc("/health", verifier.RequireWrites(handle.IsHealth))
+	mux.HandleFunc("/uploadBinary", verifier.RequireWrites(handle.UploadBinary))
+	mux.HandleFunc("/run", verifier.RequireWrites(handle.Run))
+	mux.HandleFunc("/stop", verifier.RequireWrites(handle.Stop))
+	mux.HandleFunc("/scheduler/status", verifier.RequireWrites(handle.SchedulerStatus))
+	mux.HandleFunc("/scheduler/stop", verifier.RequireWrites(handle.SchedulerStop))
+	mux.HandleFunc("/scheduler/start", verifier.RequireWrites(handle.SchedulerStart))
+	mux.HandleFunc("/tests", verifier.RequireWrites(handle.Tests))
+	mux.HandleFunc("/tests/", verifier.RequireWrites(handle.Tests))
+	mux.HandleFunc("/runs/", verifier.RequireWrites(handle.RunRoutes))
+	mux.HandleFunc("/status/", verifier.RequireWrites(handle.JobStatus))
+	mux.HandleFunc("/screenshots/", verifier.RequireWrites(handle.ListScreenshots))
+	mux.HandleFunc("/screenshot/", verifier.RequireWrites(handle.DownloadScreenshot))
 
 	server := &http.Server{
 		Addr:    ":3000",

@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -19,6 +20,9 @@ type RuntimeSpec struct {
 	MemoryMB        *int
 	CPUs            *float64
 	NetworkOverride *bool
+	// Env is passed to the container by name; values travel via the docker
+	// CLI's environment, never its arguments.
+	Env map[string]string
 }
 
 var runtimes = map[string]RuntimeSpec{
@@ -72,6 +76,12 @@ func Execute(
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "docker", args...)
+	if len(spec.Env) > 0 {
+		cmd.Env = os.Environ()
+		for _, name := range envNames(spec.Env) {
+			cmd.Env = append(cmd.Env, name+"="+spec.Env[name])
+		}
+	}
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {

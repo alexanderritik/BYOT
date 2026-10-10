@@ -43,3 +43,31 @@ func TestDockerRunArgs_Hardening(t *testing.T) {
 		}
 	}
 }
+
+func TestDockerRunArgs_EnvNamesOnly(t *testing.T) {
+	args := dockerRunArgs("/tmp/ws", RuntimeSpec{
+		Image:   "alpine",
+		Command: "./artifact",
+		Env:     map[string]string{"API_KEY": "s3cr3t-value", "BASE_URL": "https://x.test"},
+	})
+	for _, a := range args {
+		if a == "s3cr3t-value" || a == "https://x.test" || a == "API_KEY=s3cr3t-value" {
+			t.Fatalf("env value leaked into args: %v", args)
+		}
+	}
+	if !contains(args, "API_KEY") || !contains(args, "BASE_URL") {
+		t.Fatalf("expected -e NAME flags, got %v", args)
+	}
+	// options must precede the image
+	img := -1
+	for i, a := range args {
+		if a == "alpine" {
+			img = i
+		}
+	}
+	for i, a := range args {
+		if a == "API_KEY" && i > img {
+			t.Fatalf("-e after image: %v", args)
+		}
+	}
+}

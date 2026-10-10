@@ -25,6 +25,9 @@ type Config struct {
 	SupabasePublishableKey string
 	SupabaseBucket         string
 
+	// Base64 32-byte key encrypting per-test secrets; empty disables secrets.
+	SecretsKey string
+
 	DBUrl             string
 	MaxDockerMemoryMB int
 	MaxDockerCPUs     float64
@@ -106,6 +109,8 @@ func LoadConfig() Config {
 		SupabasePublishableKey: os.Getenv(
 			"SUPABASE_PUBLISHABLE_KEY",
 		),
+
+		SecretsKey: os.Getenv("SECRETS_KEY"),
 
 		// Database
 		DBUrl: os.Getenv(

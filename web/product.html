@@ -525,8 +525,8 @@ tbody tr.clickable:hover{background:var(--surface-2);}
 
 <div class="auth-back" id="auth-back">
   <form class="auth-card" id="auth-form" onsubmit="authSubmit(event)">
-    <h3 id="auth-title">Sign in to upload</h3>
-    <p>Browsing is open. An account is only needed to upload tests.</p>
+    <h3 id="auth-title">Sign in to continue</h3>
+    <p>Browsing is open. An account is only needed to make changes.</p>
     <div class="field"><label for="auth-email">Email</label><input id="auth-email" type="email" required autocomplete="email"></div>
     <div class="field"><label for="auth-pass">Password</label><input id="auth-pass" type="password" required minlength="6" autocomplete="current-password"></div>
     <div class="auth-err" id="auth-err"></div>
@@ -612,7 +612,7 @@ function authOpen(){ document.getElementById('auth-err').textContent=''; documen
 function authClose(){ document.getElementById('auth-back').classList.remove('open'); if (auth.waiter){ auth.waiter({ token:null, ok:false }); auth.waiter=null; } }
 function authToggle(){
   auth.signup = !auth.signup;
-  document.getElementById('auth-title').textContent = auth.signup ? 'Create an account' : 'Sign in to upload';
+  document.getElementById('auth-title').textContent = auth.signup ? 'Create an account' : 'Sign in to continue';
   document.getElementById('auth-btn').textContent = auth.signup ? 'Sign up' : 'Sign in';
   document.getElementById('auth-switch').textContent = auth.signup ? 'Have an account? Sign in' : 'No account? Sign up';
   document.getElementById('auth-pass').autocomplete = auth.signup ? 'new-password' : 'current-password';
@@ -646,7 +646,97 @@ function authRender(){
 }
 document.addEventListener('DOMContentLoaded', authRender);
 
+
+/* ---- environment variables & secrets (auth-gated) ---- */
+async function envFetch(testId, path, opts){
+  const a = await ensureAuth();
+  if (!a.ok) throw new Error('Sign in to manage environment variables');
+  const headers = { ...(opts && opts.headers), ...(a.token ? { Authorization:'Bearer ' + a.token } : {}) };
+  try { return await apiJson('/tests/' + testId + '/env' + (path||''), { ...opts, headers }); }
+  catch (e){ if (e.message === 'authentication required') authSave(null); throw e; }
+}
+
+async function loadEnvPanel(testId){
+  const el = document.getElementById('env-panel');
+  if (!el) return;
+  const cfg = await authConfig();
+  if (cfg.enabled && !(await authToken())){
+    el.innerHTML = `<div class="empty" style="padding:.5rem 0">Environment variables are private. <button class="auth-switch" onclick="loadEnvPanel('${testId}')">Sign in to view and edit</button></div>`;
+    el.querySelector('button').onclick = async () => { try { await envFetch(testId, '', {}); } catch {} loadEnvPanel(testId); };
+    return;
+  }
+  try { renderEnvPanel(testId, await envFetch(testId, '', {})); }
+  catch (e){ el.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+
+function renderEnvPanel(testId, data){
+  const el = document.getElementById('env-panel');
+  const rows = (data.vars||[]).map(v=>`
+    <tr>
+      <td class="mono">${esc(v.name)}</td>
+      <td class="mono">${v.is_secret ? '<span class="runtime-badge">secret</span> ••••••••' : esc(v.value)}</td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="btn btn-ghost btn-sm" onclick="envEdit('${esc(v.name)}',${v.is_secret})">${v.is_secret ? 'Replace' : 'Edit'}</button>
+        <button class="btn btn-ghost btn-sm" onclick="envDelete('${testId}','${esc(v.name)}')">Delete</button>
+      </td>
+    </tr>`).join('') || '<tr><td colspan="3" class="empty">No variables yet.</td></tr>';
+  window.__envValues = Object.fromEntries((data.vars||[]).map(v=>[v.name, v.value]));
+  el.innerHTML = `
+    <div class="twrap" style="margin-bottom:1rem"><table style="min-width:0"><thead><tr><th>Name</th><th>Value</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+    <form onsubmit="envSave(event,'${testId}')">
+      <div class="form-grid" style="grid-template-columns:1fr 2fr auto;align-items:end;max-width:none">
+        <div class="field"><label for="env-name">Name</label><input id="env-name" placeholder="BASE_URL" required pattern="[A-Za-z_][A-Za-z0-9_]*" maxlength="64"></div>
+        <div class="field"><label for="env-value">Value</label><input id="env-value" placeholder="value" autocomplete="off"></div>
+        <button class="btn btn-accent" type="submit">Save</button>
+        <label class="hint" style="grid-column:1/-1;display:flex;gap:.4rem;align-items:center">
+          <input type="checkbox" id="env-secret" ${data.secrets_enabled ? '' : 'disabled'}> Secret — encrypted, write-only, redacted from logs
+          ${data.secrets_enabled ? '' : '<span style="color:var(--warning)">(server has no SECRETS_KEY; secrets disabled)</span>'}
+        </label>
+      </div>
+    </form>
+    <p class="hint" style="margin:.75rem 0 0">Available to the test as environment variables. Redaction is best-effort: a test that transforms a secret before printing it can still leak it.</p>`;
+}
+
+function envEdit(name, isSecret){
+  document.getElementById('env-name').value = name;
+  const v = document.getElementById('env-value');
+  v.value = isSecret ? '' : (window.__envValues[name] || '');
+  document.getElementById('env-secret').checked = isSecret;
+  v.focus();
+}
+
+async function envSave(e, testId){
+  e.preventDefault();
+  const body = { name: document.getElementById('env-name').value.trim(),
+                 value: document.getElementById('env-value').value,
+                 is_secret: document.getElementById('env-secret').checked };
+  try {
+    await envFetch(testId, '', { method:'PUT', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(body) });
+    toast(`<strong>${esc(body.name)}</strong> saved`);
+    renderEnvPanel(testId, await envFetch(testId, '', {}));
+  } catch (err){ toast(esc(err.message)); }
+}
+
+async function envDelete(testId, name){
+  if (!confirm('Delete ' + name + '?')) return;
+  try {
+    await envFetch(testId, '/' + encodeURIComponent(name), { method:'DELETE' });
+    renderEnvPanel(testId, await envFetch(testId, '', {}));
+  } catch (err){ toast(esc(err.message)); }
+}
+
 async function apiJson(url, opts){
+
+  opts = opts || {};
+
+  // Reads are public; anything that changes state needs a signed-in user.
+  const method = (opts.method || 'GET').toUpperCase();
+  const hasAuth = opts.headers && (opts.headers.Authorization || opts.headers.authorization);
+  if (method !== 'GET' && !hasAuth){
+    const a = await ensureAuth();
+    if (!a.ok) throw new Error('Sign in required');
+    if (a.token) opts = { ...opts, headers: { ...opts.headers, Authorization: 'Bearer ' + a.token } };
+  }
 
   const res = await fetch(url, opts);
 
@@ -655,6 +745,8 @@ async function apiJson(url, opts){
     let msg = res.statusText;
 
     try { const j = await res.json(); msg = j.error || msg; } catch {}
+
+    if (res.status === 401) authSave(null);
 
     throw new Error(msg);
 
@@ -1208,6 +1300,10 @@ async function renderTestDetail(id){
 
     </div>
 
+    <div class="section-title">Environment</div>
+
+    <div class="panel" style="padding:1.25rem 1.5rem" id="env-panel"><div class="empty">Loading…</div></div>
+
     <div class="section-title">Docker Resources</div>
 
     <form class="panel" style="padding:1.25rem 1.5rem" onsubmit="saveDockerResources(event,'${id}')">
@@ -1333,6 +1429,8 @@ async function renderTestDetail(id){
       <tbody>${runRows}</tbody>
 
     </table></div></div>`;
+
+  loadEnvPanel(id);
 
 }
 

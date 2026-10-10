@@ -14,6 +14,7 @@ import (
 	"github.com/alexanderritik/mini-lambda/repository"
 	"github.com/alexanderritik/mini-lambda/schedule"
 	"github.com/alexanderritik/mini-lambda/scheduler"
+	"github.com/alexanderritik/mini-lambda/secrets"
 	"github.com/alexanderritik/mini-lambda/storage"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
@@ -32,9 +33,12 @@ type Handler struct {
 	queue          *queue.Queue
 	scheduler      *scheduler.Scheduler
 	config         config.Config
+	env            repository.EnvRepository
+	secrets        *secrets.Box
+	requireAuth    func(http.HandlerFunc) http.HandlerFunc
 }
 
-func NewHandler(storage storage.Storage, test repository.TestRepository, testRunRepo repository.TestRunRepository, screenshotRepo repository.ScreenshotRepository, q *queue.Queue, sched *scheduler.Scheduler, cfg config.Config) *Handler {
+func NewHandler(storage storage.Storage, test repository.TestRepository, testRunRepo repository.TestRunRepository, screenshotRepo repository.ScreenshotRepository, q *queue.Queue, sched *scheduler.Scheduler, cfg config.Config, env repository.EnvRepository, box *secrets.Box, requireAuth func(http.HandlerFunc) http.HandlerFunc) *Handler {
 	return &Handler{
 		storage:        storage,
 		test:           test,
@@ -43,6 +47,9 @@ func NewHandler(storage storage.Storage, test repository.TestRepository, testRun
 		queue:          q,
 		scheduler:      sched,
 		config:         cfg,
+		env:            env,
+		secrets:        box,
+		requireAuth:    requireAuth,
 	}
 }
 
@@ -114,6 +121,14 @@ func (hl *Handler) Tests(w http.ResponseWriter, r *http.Request) {
 	path = strings.Trim(path, "/")
 	if path == "" {
 		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "test ID is missing"})
+		return
+	}
+
+	if i := strings.Index(path, "/env"); i > 0 && (len(path) == i+4 || path[i+4] == '/') {
+		testID, rest := path[:i], path[i+4:]
+		hl.requireAuth(func(w http.ResponseWriter, r *http.Request) {
+			hl.envRoutes(w, r, testID, rest)
+		})(w, r)
 		return
 	}
 

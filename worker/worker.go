@@ -16,6 +16,7 @@ import (
 	"github.com/alexanderritik/mini-lambda/queue"
 	"github.com/alexanderritik/mini-lambda/repository"
 	"github.com/alexanderritik/mini-lambda/runtime"
+	"github.com/alexanderritik/mini-lambda/secrets"
 	"github.com/alexanderritik/mini-lambda/storage"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
@@ -28,10 +29,12 @@ type Worker struct {
 	testRunRepo    repository.TestRunRepository
 	screenshotRepo repository.ScreenshotRepository
 	storage        storage.Storage
+	envRepo        repository.EnvRepository
+	secrets        *secrets.Box
 	pollInterval   time.Duration
 }
 
-func NewWorker(workerID string, q *queue.Queue, testRepo repository.TestRepository, testRunRepo repository.TestRunRepository, screenshotRepo repository.ScreenshotRepository, storage storage.Storage) *Worker {
+func NewWorker(workerID string, q *queue.Queue, testRepo repository.TestRepository, testRunRepo repository.TestRunRepository, screenshotRepo repository.ScreenshotRepository, storage storage.Storage, envRepo repository.EnvRepository, box *secrets.Box) *Worker {
 	return &Worker{
 		workerID:       workerID,
 		queue:          q,
@@ -39,6 +42,8 @@ func NewWorker(workerID string, q *queue.Queue, testRepo repository.TestReposito
 		testRunRepo:    testRunRepo,
 		screenshotRepo: screenshotRepo,
 		storage:        storage,
+		envRepo:        envRepo,
+		secrets:        box,
 		pollInterval:   5 * time.Second,
 	}
 }
@@ -162,6 +167,11 @@ func (w *Worker) executeJob(ctx context.Context, job *model.Job) error {
 	if command == "" {
 		command = baseSpec.Command
 	}
+	env, secretValues, err := w.loadEnv(ctx, test.UUID)
+	if err != nil {
+		return err
+	}
+
 	spec := runtime.RuntimeSpec{
 		Image:           baseSpec.Image,
 		Command:         command,
@@ -169,6 +179,7 @@ func (w *Worker) executeJob(ctx context.Context, job *model.Job) error {
 		MemoryMB:        test.DockerMemoryMB,
 		CPUs:            test.DockerCPUs,
 		NetworkOverride: test.DockerNetworkEnabled,
+		Env:             env,
 	}
 
 	timeout := time.Duration(test.TimeoutSeconds) * time.Second
@@ -179,6 +190,7 @@ func (w *Worker) executeJob(ctx context.Context, job *model.Job) error {
 	startedAt := time.Now().UTC()
 	result, execErr := runtime.Execute(job.UUID, workspace, spec, timeout)
 	finishedAt := time.Now().UTC()
+	result.Output = secrets.Redact(result.Output, secretValues)
 	duration := finishedAt.Sub(startedAt)
 
 	status := "pass"
@@ -251,6 +263,29 @@ func (w *Worker) executeJob(ctx context.Context, job *model.Job) error {
 		Msg("job execution completed")
 
 	return execErr
+}
+
+// loadEnv returns the test's environment (secrets decrypted) and the list of
+// secret values to redact from output. A secret that cannot be decrypted fails
+// the run rather than running the test with it silently missing.
+func (w *Worker) loadEnv(ctx context.Context, testID string) (map[string]string, []string, error) {
+	vars, err := w.envRepo.List(ctx, testID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("load env vars: %w", err)
+	}
+	env := make(map[string]string, len(vars))
+	var secretValues []string
+	for _, v := range vars {
+		val := v.Value
+		if v.IsSecret {
+			if val, err = w.secrets.Decrypt(v.Value); err != nil {
+				return nil, nil, fmt.Errorf("secret %s: %w", v.Name, err)
+			}
+			secretValues = append(secretValues, val)
+		}
+		env[v.Name] = val
+	}
+	return env, secretValues, nil
 }
 
 func (w *Worker) uploadScreenshots(ctx context.Context, workspace string, testUUID, runID string) error {

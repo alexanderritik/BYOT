@@ -3,6 +3,7 @@ package runtime
 import (
 	"fmt"
 	"os"
+	"sort"
 )
 
 func dockerRunArgs(workspace string, spec RuntimeSpec) []string {
@@ -27,10 +28,17 @@ func dockerRunArgs(workspace string, spec RuntimeSpec) []string {
 		cpus = fmt.Sprintf("%.2f", *spec.CPUs)
 	}
 
+	var envArgs []string
+	for _, name := range envNames(spec.Env) {
+		// Name only: docker reads the value from its own environment, so
+		// secrets never appear in the process list.
+		envArgs = append(envArgs, "-e", name)
+	}
+
 	command := spec.Command
 	// normalized in Execute; kept here for tests that call dockerRunArgs directly
 
-	return []string{
+	args := []string{
 		"run",
 		"--rm",
 		"--network=" + network,
@@ -54,8 +62,16 @@ func dockerRunArgs(workspace string, spec RuntimeSpec) []string {
 		"/app",
 		"--entrypoint",
 		"sh",
-		spec.Image,
-		"-c",
-		command,
 	}
+	args = append(args, envArgs...)
+	return append(args, spec.Image, "-c", command)
+}
+
+func envNames(env map[string]string) []string {
+	names := make([]string, 0, len(env))
+	for n := range env {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
 }

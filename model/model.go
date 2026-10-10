@@ -78,3 +78,12 @@ type Job struct {
 	WorkerID     *string    `db:"worker_id"`
 	ErrorMessage *string    `db:"error_message"`
 }
+
+// EnvVar is a per-test environment variable. For secrets, Value holds
+// ciphertext and is never returned by the API.
+type EnvVar struct {
+	Name      string    `db:"name" json:"name"`
+	Value     string    `db:"value" json:"value,omitempty"`
+	IsSecret  bool      `db:"is_secret" json:"is_secret"`
+	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
+}
