@@ -164,10 +164,10 @@ footer { border-top: 1px solid var(--border); padding: 2.5rem; display: flex; al
 <section class="hero">
   <div class="pill"><div class="pill-dot"></div>open source · self-hostable · active-development</div>
   <h1>Your tests.<br><span class="ghost">Running in</span> <span class="green">production.</span></h1>
-  <p class="hero-p">Upload your existing Playwright, k6, or any test binary. BYOT runs it on a schedule, isolated in Docker, and wakes you up on Slack/Pagerduty/webhook when something actually breaks.</p>
+  <p class="hero-p">Upload your existing Playwright, k6, Node, Python or Go test. BYOT runs it on a schedule, isolated in Docker, and sends a webhook (Slack-compatible) when something actually breaks.</p>
   <div class="hero-btns">
     <a href="/app" class="btn-g">Open Playground →</a>
-    <a href="https://github.com/alexanderritik/fnx" class="btn-o">$ docker compose up byot</a>
+    <a href="https://github.com/alexanderritik/fnx" class="btn-o">View on GitHub</a>
   </div>
 
   <div class="term">
@@ -176,11 +176,11 @@ footer { border-top: 1px solid var(--border); padding: 2.5rem; display: flex; al
       <span class="term-title">byot — live execution log</span>
     </div>
     <div class="term-body">
-      <div class="tc"># Upload your existing Playwright test</div>
-      <div class="tp"><em>$</em> byot deploy ./e2e/checkout.test --runtime node</div>
-      <div class="to">✓ Binary uploaded  →  fnx/a3f8b2/binary</div>
-      <div class="to">✓ Scheduled every 30m</div>
-      <div class="to">✓ Slack webhook configured</div>
+      <div class="tc"># Upload your existing test (or use the web UI)</div>
+      <div class="tp"><em>$</em> curl -X POST /uploadBinary -H "Authorization: Bearer $TOKEN" \</div>
+      <div class="tp">    -F binary=@checkout.js -F runtime=node -F name=checkout \</div>
+      <div class="tp">    -F cron="*/30 * * * *" -F webhook_url=$SLACK_WEBHOOK</div>
+      <div class="to">✓ Uploaded · scheduled every 30m · webhook configured</div>
       <div class="ts">→ Test ID: a3f8b2c1 · node runtime</div>
       <br>
       <div class="tc"># 30 minutes later — runs automatically</div>
@@ -189,7 +189,7 @@ footer { border-top: 1px solid var(--border); padding: 2.5rem; display: flex; al
       <div class="to">2026-05-03T10:30:04Z [stdout] ✓ Cart updated</div>
       <div class="te">2026-05-03T10:30:06Z [stderr] ✗ Pay button not found</div>
       <div class="te">2026-05-03T10:30:06Z [stderr] Test FAILED · 3rd consecutive failure</div>
-      <div class="to">→ Slack alert sent to #incidents · P0 escalated to on-call</div>
+      <div class="to">→ Failure webhook sent after 3 consecutive failures</div>
     </div>
   </div>
 </section>
@@ -197,20 +197,20 @@ footer { border-top: 1px solid var(--border); padding: 2.5rem; display: flex; al
 <div class="metrics-bar">
   <div class="met"><div class="met-n">0</div><div class="met-l">lines to rewrite</div></div>
   <div class="met"><div class="met-n">&lt;5m</div><div class="met-l">to first alert</div></div>
-  <div class="met"><div class="met-n">3+</div><div class="met-l">runtimes supported</div></div>
+  <div class="met"><div class="met-n">5</div><div class="met-l">runtimes supported</div></div>
   <div class="met"><div class="met-n">100%</div><div class="met-l">open source core</div></div>
 </div>
 
 <section class="sec" id="features">
   <div class="sec-label">features</div>
   <div class="sec-h">Built for engineers<br>who hate false alarms.</div>
-  <p class="sec-p">Smart alerting that learns which failures actually matter. No DSL to learn. No lock-in.</p>
+  <p class="sec-p">Alert only on failures that persist. Run your tests in a sandbox, with secrets handled properly. No DSL to learn. No lock-in.</p>
 
   <div class="feat-grid">
     <div class="feat">
       <div class="feat-icon fi-g">◈</div>
       <div class="feat-t">Bring your own test</div>
-      <div class="feat-d">Upload any compiled binary. Playwright, k6, Cypress, custom scripts — if it runs, BYOT runs it.</div>
+      <div class="feat-d">Upload a Playwright project, a k6 script, or a Node, Python or Go program. If it runs in one of those, BYOT runs it.</div>
     </div>
     <div class="feat">
       <div class="feat-icon fi-o">◷</div>
@@ -234,8 +234,38 @@ footer { border-top: 1px solid var(--border); padding: 2.5rem; display: flex; al
     </div>
     <div class="feat">
       <div class="feat-icon fi-b">⌘</div>
-      <div class="feat-t">Alerts everywhere</div>
-      <div class="feat-d">Slack, PagerDuty, webhooks. Set a destination per test. Full control.</div>
+      <div class="feat-t">Webhook alerts</div>
+      <div class="feat-d">Set a webhook URL per test. Messages are sent in Slack's incoming-webhook format, so Slack works out of the box. You get a failure alert and a recovery alert.</div>
+    </div>
+    <div class="feat">
+      <div class="feat-icon fi-g">⚿</div>
+      <div class="feat-t">Secrets, encrypted</div>
+      <div class="feat-d">Give each test its own environment variables. Mark API keys as secret: they're encrypted at rest, never shown again, and scrubbed from your logs.</div>
+    </div>
+    <div class="feat">
+      <div class="feat-icon fi-o">▣</div>
+      <div class="feat-t">Sandboxed by default</div>
+      <div class="feat-d">Every run is a throwaway container: non-root, no extra privileges, read-only filesystem, CPU and memory limits. Network is off unless the runtime needs it.</div>
+    </div>
+    <div class="feat">
+      <div class="feat-icon fi-b">⇉</div>
+      <div class="feat-t">Runs in parallel</div>
+      <div class="feat-d">Ten monitors due at the same minute don't queue behind each other. Concurrency is configurable to fit your host.</div>
+    </div>
+    <div class="feat">
+      <div class="feat-icon fi-g">◫</div>
+      <div class="feat-t">Screenshots on every run</div>
+      <div class="feat-d">Playwright screenshots are collected and stored with the run, so you can see what the page looked like when it failed.</div>
+    </div>
+    <div class="feat">
+      <div class="feat-icon fi-o">↻</div>
+      <div class="feat-t">Self-cleaning</div>
+      <div class="feat-d">Hung tests are killed at their timeout, runs abandoned by a restart are failed automatically, and old runs, logs and screenshots are pruned on a schedule.</div>
+    </div>
+    <div class="feat">
+      <div class="feat-icon fi-b">✓</div>
+      <div class="feat-t">Open to read, sign-in to change</div>
+      <div class="feat-d">Anyone can look at the dashboard. Uploading, running, scheduling, deleting and editing secrets all require a sign-in.</div>
     </div>
   </div>
 </section>
@@ -254,7 +284,7 @@ footer { border-top: 1px solid var(--border); padding: 2.5rem; display: flex; al
     <div class="step">
       <div class="step-n">02</div>
       <div class="step-t">Configure</div>
-      <div class="step-d">Set schedule, timeout, alert destinations. Takes 2 minutes.</div>
+      <div class="step-d">Set schedule, timeout, environment variables and secrets, and your webhook. Takes 2 minutes.</div>
     </div>
     <div class="step">
       <div class="step-n">03</div>
@@ -353,34 +383,6 @@ footer { border-top: 1px solid var(--border); padding: 2.5rem; display: flex; al
 
 <hr class="div">
 
-<section class="sec">
-  <div class="sec-label">from the community</div>
-  <div class="sec-h">Engineers love it.</div>
-  <div class="quotes">
-    <div class="qc">
-      <div class="qt">"We had 200 Playwright tests sitting in CI. BYOT turned them into production monitors in an afternoon. Zero rewrites."</div>
-      <div class="qa">
-        <div class="av" style="background:rgba(0,232,122,0.1);color:var(--accent)">SR</div>
-        <div><div class="an">Sarah R.</div><div class="ar">Staff Engineer, Fintech</div></div>
-      </div>
-    </div>
-    <div class="qc">
-      <div class="qt">"Finally. A monitoring tool that doesn't make me learn a new language just to check if my checkout page works."</div>
-      <div class="qa">
-        <div class="av" style="background:rgba(255,69,0,0.1);color:var(--accent2)">MK</div>
-        <div><div class="an">Marcus K.</div><div class="ar">Lead Developer, E-commerce</div></div>
-      </div>
-    </div>
-    <div class="qc">
-      <div class="qt">"The flaky test detection alone saved our on-call rotation. We went from 20 alerts a night to 2."</div>
-      <div class="qa">
-        <div class="av" style="background:rgba(100,180,255,0.1);color:#64b4ff">AP</div>
-        <div><div class="an">Anika P.</div><div class="ar">Platform Engineer, SaaS</div></div>
-      </div>
-    </div>
-  </div>
-</section>
-
 <section class="cta-sec">
   <h2>Stop finding out<br>from your customers.</h2>
   <p>Deploy BYOT in 5 minutes. Your existing tests start monitoring production today.</p>
@@ -395,9 +397,6 @@ footer { border-top: 1px solid var(--border); padding: 2.5rem; display: flex; al
   <ul class="flinks">
     <li><a href="https://github.com/alexanderritik/fnx#readme">Documentation</a></li>
     <li><a href="https://github.com/alexanderritik/fnx">GitHub</a></li>
-    <li><a href="#">Discord</a></li>
-    <li><a href="#">Blog</a></li>
-    <li><a href="#">Privacy</a></li>
   </ul>
   <div class="fc">© 2026 BYOT · MIT License</div>
 </footer>
