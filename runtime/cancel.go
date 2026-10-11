@@ -31,5 +31,7 @@ func Cancel(jobID string) bool {
 	if !ok || cmd.Process == nil {
 		return false
 	}
-	return cmd.Process.Kill() == nil
+	killed := cmd.Process.Kill() == nil
+	KillContainer(ContainerName(jobID)) // killing the CLI alone leaves the container running
+	return killed
 }

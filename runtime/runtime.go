@@ -23,6 +23,9 @@ type RuntimeSpec struct {
 	// Env is passed to the container by name; values travel via the docker
 	// CLI's environment, never its arguments.
 	Env map[string]string
+	// Name lets the container be killed by name; killing only the docker CLI
+	// process would leave it running.
+	Name string
 }
 
 var runtimes = map[string]RuntimeSpec{
@@ -70,6 +73,7 @@ func Execute(
 	timeout time.Duration,
 ) (Result, error) {
 	spec.Command = strings.ReplaceAll(spec.Command, "./binary", "./artifact")
+	spec.Name = ContainerName(jobID)
 	args := dockerRunArgs(workspace, spec)
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -130,6 +134,7 @@ func Execute(
 	result := Result{Output: buf.Bytes()}
 
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		KillContainer(spec.Name)
 		result.ExitCode = -1
 		return result, fmt.Errorf("execution timed out after %s", timeout)
 	}
@@ -147,4 +152,20 @@ func Execute(
 
 	result.ExitCode = 0
 	return result, nil
+}
+
+// ContainerName is the docker container name used for a job's run.
+func ContainerName(jobID string) string {
+	if jobID == "" {
+		return ""
+	}
+	return "byot-" + jobID
+}
+
+// KillContainer force-removes a job's container (no-op if it doesn't exist).
+func KillContainer(name string) {
+	if name == "" {
+		return
+	}
+	_ = exec.Command("docker", "rm", "-f", name).Run()
 }

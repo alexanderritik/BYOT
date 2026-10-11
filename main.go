@@ -148,12 +148,16 @@ func main() {
 
 	// Create and start worker
 	workerID := uuid.NewString()
-	w := worker.NewWorker(workerID, q, testRepo, testRunRepo, screenshotRepo, store, envRepo, box)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	w := worker.NewWorker(workerID, q, testRepo, testRunRepo, screenshotRepo, store, envRepo, box, cfg.WorkerConcurrency)
+	workerCtx, stopWorker := context.WithCancel(context.Background())
+	defer stopWorker()
 
-	go w.Start(ctx)
-	go sched.Start(ctx)
+	workerDone := make(chan struct{})
+	go func() {
+		w.Start(workerCtx)
+		close(workerDone)
+	}()
+	go sched.Start(workerCtx)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/auth/config", verifier.PublicConfig)
@@ -202,6 +206,15 @@ func main() {
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		log.Error().Err(err).Msg("http shutdown failed")
+	}
+
+	// Stop claiming jobs and let running ones finish (bounded by the same
+	// deadline). Anything still running is left for stale-job recovery.
+	stopWorker()
+	select {
+	case <-workerDone:
+	case <-shutdownCtx.Done():
+		log.Warn().Msg("shutdown deadline hit with jobs still running")
 	}
 
 	// Close postgres pool

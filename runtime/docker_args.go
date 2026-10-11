@@ -63,6 +63,9 @@ func dockerRunArgs(workspace string, spec RuntimeSpec) []string {
 		"--entrypoint",
 		"sh",
 	}
+	if spec.Name != "" {
+		args = append(args, "--name", spec.Name)
+	}
 	args = append(args, envArgs...)
 	return append(args, spec.Image, "-c", command)
 }

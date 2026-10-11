@@ -31,10 +31,11 @@ type Worker struct {
 	storage        storage.Storage
 	envRepo        repository.EnvRepository
 	secrets        *secrets.Box
+	concurrency    int
 	pollInterval   time.Duration
 }
 
-func NewWorker(workerID string, q *queue.Queue, testRepo repository.TestRepository, testRunRepo repository.TestRunRepository, screenshotRepo repository.ScreenshotRepository, storage storage.Storage, envRepo repository.EnvRepository, box *secrets.Box) *Worker {
+func NewWorker(workerID string, q *queue.Queue, testRepo repository.TestRepository, testRunRepo repository.TestRunRepository, screenshotRepo repository.ScreenshotRepository, storage storage.Storage, envRepo repository.EnvRepository, box *secrets.Box, concurrency int) *Worker {
 	return &Worker{
 		workerID:       workerID,
 		queue:          q,
@@ -44,37 +45,69 @@ func NewWorker(workerID string, q *queue.Queue, testRepo repository.TestReposito
 		storage:        storage,
 		envRepo:        envRepo,
 		secrets:        box,
+		concurrency:    concurrency,
 		pollInterval:   5 * time.Second,
 	}
 }
 
+// Start claims and runs jobs, up to w.concurrency at a time, until ctx is
+// cancelled. It then waits for in-flight jobs to finish before returning.
 func (w *Worker) Start(ctx context.Context) {
-	log.Info().Str("worker_id", w.workerID).Msg("worker started")
+	log.Info().Str("worker_id", w.workerID).Int("concurrency", w.concurrency).Msg("worker started")
 
-	ticker := time.NewTicker(w.pollInterval)
-	defer ticker.Stop()
+	go w.sweepStale(ctx)
 
+	runPool(ctx, w.concurrency, w.pollInterval,
+		func(ctx context.Context) (*model.Job, error) { return w.queue.Dequeue(ctx, w.workerID) },
+		w.handleJob,
+	)
+
+	log.Info().Str("worker_id", w.workerID).Msg("worker shut down")
+}
+
+const (
+	staleGrace      = 5 * time.Minute
+	staleSweepEvery = time.Minute
+)
+
+// sweepStale fails jobs stuck in 'running' after a crash or restart and removes
+// any container they left behind. It runs once at startup, then periodically.
+func (w *Worker) sweepStale(ctx context.Context) {
+	sweep := func() {
+		ids, err := w.queue.FailStale(ctx, staleGrace)
+		if err != nil {
+			if ctx.Err() == nil {
+				log.Error().Err(err).Msg("stale job sweep failed")
+			}
+			return
+		}
+		for _, id := range ids {
+			runtime.KillContainer(runtime.ContainerName(id))
+			log.Warn().Str("job_id", id).Msg("marked stale job as failed")
+		}
+	}
+	sweep()
+	t := time.NewTicker(staleSweepEvery)
+	defer t.Stop()
 	for {
 		select {
 		case <-ctx.Done():
-			log.Info().Str("worker_id", w.workerID).Msg("worker shutting down")
 			return
-		case <-ticker.C:
-			w.processNextJob(ctx)
+		case <-t.C:
+			sweep()
 		}
 	}
 }
 
-func (w *Worker) processNextJob(ctx context.Context) {
-	job, err := w.queue.Dequeue(ctx, w.workerID)
-	if err != nil {
-		log.Error().Err(err).Str("worker_id", w.workerID).Msg("failed to dequeue job")
-		return
-	}
-
-	if job == nil {
-		return
-	}
+func (w *Worker) handleJob(ctx context.Context, job *model.Job) {
+	// A panic in one job must not take down the server or its sibling jobs.
+	defer func() {
+		if r := recover(); r != nil {
+			log.Error().Interface("panic", r).Str("job_id", job.UUID).Msg("job panicked")
+			msg := fmt.Sprintf("internal error: %v", r)
+			w.queue.Complete(ctx, job.UUID, "failed", &msg)
+		}
+	}()
 
 	log.Info().Str("worker_id", w.workerID).Str("job_id", job.UUID).Str("test_id", job.TestID).Msg("processing job")
 

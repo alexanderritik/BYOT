@@ -80,3 +80,7 @@ func (q *Queue) ListActiveForTest(ctx context.Context, testID string) ([]*model.
 func (q *Queue) CancelActiveForTest(ctx context.Context, testID string, reason string) (int, error) {
 	return q.jobRepo.CancelActiveForTest(ctx, testID, reason)
 }
+
+func (q *Queue) FailStale(ctx context.Context, grace time.Duration) ([]string, error) {
+	return q.jobRepo.FailStale(ctx, grace)
+}

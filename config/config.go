@@ -28,7 +28,9 @@ type Config struct {
 	// Base64 32-byte key encrypting per-test secrets; empty disables secrets.
 	SecretsKey string
 
-	DBUrl             string
+	DBUrl string
+	// Jobs run in parallel per instance (WORKER_CONCURRENCY, default 3).
+	WorkerConcurrency int
 	MaxDockerMemoryMB int
 	MaxDockerCPUs     float64
 }
@@ -40,6 +42,13 @@ func LoadConfig() Config {
 			"warning: .env file not found: %v",
 			err,
 		)
+	}
+
+	concurrency := 3
+	if value := os.Getenv("WORKER_CONCURRENCY"); value != "" {
+		if parsed, err := strconv.Atoi(value); err == nil && parsed > 0 {
+			concurrency = min(parsed, 32)
+		}
 	}
 
 	maxMemory := 2048
@@ -118,6 +127,7 @@ func LoadConfig() Config {
 		),
 
 		// Docker
+		WorkerConcurrency: concurrency,
 		MaxDockerMemoryMB: maxMemory,
 		MaxDockerCPUs:     maxCPUs,
 	}

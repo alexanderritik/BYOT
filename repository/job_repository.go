@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/alexanderritik/mini-lambda/model"
 	"github.com/jackc/pgx/v5"
@@ -193,4 +194,33 @@ func (r *JobRepository) ListByTestID(ctx context.Context, testID string) ([]*mod
 		jobs = append(jobs, &job)
 	}
 	return jobs, nil
+}
+
+// FailStale marks 'running' jobs as failed once they are well past their test's
+// timeout (the worker that owned them crashed or was restarted). grace covers
+// download, unpack and upload time around the container run. Returns the ids.
+func (r *JobRepository) FailStale(ctx context.Context, grace time.Duration) ([]string, error) {
+	rows, err := r.pool.Query(ctx, `
+		UPDATE jobs j
+		SET status = 'failed',
+		    finished_at = NOW(),
+		    error_message = 'job abandoned: worker stopped or crashed before finishing'
+		FROM tests t
+		WHERE j.test_id = t.uuid
+		  AND j.status = 'running'
+		  AND j.started_at + make_interval(secs => t.timeout_seconds) + make_interval(secs => $1) < NOW()
+		RETURNING j.uuid`, grace.Seconds())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
