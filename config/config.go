@@ -31,6 +31,9 @@ type Config struct {
 	DBUrl string
 	// Jobs run in parallel per instance (WORKER_CONCURRENCY, default 3).
 	WorkerConcurrency int
+	// Retention: 0 disables that limit. The newest run of each test is always kept.
+	RetentionMaxRuns  int
+	RetentionDays     int
 	MaxDockerMemoryMB int
 	MaxDockerCPUs     float64
 }
@@ -50,6 +53,9 @@ func LoadConfig() Config {
 			concurrency = min(parsed, 32)
 		}
 	}
+
+	retentionMaxRuns := envInt("RETENTION_MAX_RUNS_PER_TEST", 100)
+	retentionDays := envInt("RETENTION_DAYS", 30)
 
 	maxMemory := 2048
 
@@ -128,6 +134,8 @@ func LoadConfig() Config {
 
 		// Docker
 		WorkerConcurrency: concurrency,
+		RetentionMaxRuns:  retentionMaxRuns,
+		RetentionDays:     retentionDays,
 		MaxDockerMemoryMB: maxMemory,
 		MaxDockerCPUs:     maxCPUs,
 	}
@@ -145,4 +153,14 @@ func getEnv(
 	}
 
 	return value
+}
+
+// envInt reads a non-negative integer; unset or invalid falls back to def.
+func envInt(key string, def int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			return n
+		}
+	}
+	return def
 }

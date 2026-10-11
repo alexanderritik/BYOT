@@ -15,6 +15,7 @@ import (
 	"github.com/alexanderritik/mini-lambda/handler"
 	"github.com/alexanderritik/mini-lambda/queue"
 	"github.com/alexanderritik/mini-lambda/repository"
+	"github.com/alexanderritik/mini-lambda/retention"
 	"github.com/alexanderritik/mini-lambda/runtime"
 	"github.com/alexanderritik/mini-lambda/scheduler"
 	"github.com/alexanderritik/mini-lambda/secrets"
@@ -158,6 +159,12 @@ func main() {
 		close(workerDone)
 	}()
 	go sched.Start(workerCtx)
+
+	sweeper := retention.New(repository.NewRetentionRepository(pool), store, retention.Policy{
+		MaxRunsPerTest: cfg.RetentionMaxRuns,
+		MaxAge:         time.Duration(cfg.RetentionDays) * 24 * time.Hour,
+	})
+	go sweeper.Run(workerCtx, time.Hour)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/auth/config", verifier.PublicConfig)
