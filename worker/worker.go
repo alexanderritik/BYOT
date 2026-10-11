@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/alexanderritik/mini-lambda/alert"
@@ -220,6 +219,11 @@ func (w *Worker) executeJob(ctx context.Context, job *model.Job) error {
 		timeout = 30 * time.Second
 	}
 
+	var preRunImages imageSnapshot
+	if test.Runtime == "playwright" {
+		preRunImages = snapshotImages(workspace)
+	}
+
 	startedAt := time.Now().UTC()
 	result, execErr := runtime.Execute(job.UUID, workspace, spec, timeout)
 	finishedAt := time.Now().UTC()
@@ -257,9 +261,7 @@ func (w *Worker) executeJob(ctx context.Context, job *model.Job) error {
 
 	// Upload screenshots for Playwright runs
 	if test.Runtime == "playwright" {
-		if err := w.uploadScreenshots(ctx, workspace, test.UUID, runID); err != nil {
-			log.Error().Err(err).Str("run_id", runID).Msg("failed to upload screenshots")
-		}
+		w.uploadScreenshots(ctx, workspace, preRunImages, test.UUID, runID)
 	}
 
 	if alertInfo, err := w.testRepo.RecordRunOutcome(ctx, test.UUID, status == "pass"); err != nil {
@@ -321,58 +323,24 @@ func (w *Worker) loadEnv(ctx context.Context, testID string) (map[string]string,
 	return env, secretValues, nil
 }
 
-func (w *Worker) uploadScreenshots(ctx context.Context, workspace string, testUUID, runID string) error {
-	// Scan workspace root and common screenshot directories
-	// Users may save screenshots with relative paths that end up in root
-	screenshotDirs := []string{
-		workspace, // Scan root for images saved with relative paths
-		filepath.Join(workspace, "test-results"),
-		filepath.Join(workspace, "screenshots"),
-		filepath.Join(workspace, "playwright-report"),
+// uploadScreenshots uploads only images the run produced; images shipped in
+// the bundle or under node_modules are ignored.
+func (w *Worker) uploadScreenshots(ctx context.Context, workspace string, before imageSnapshot, testUUID, runID string) {
+	paths, truncated := newScreenshots(workspace, before)
+	if truncated > 0 {
+		log.Warn().Str("run_id", runID).Int("skipped", truncated).Int("limit", maxScreenshotsPerRun).Msg("too many screenshots, extra ones not uploaded")
 	}
-
-	for _, dir := range screenshotDirs {
-		if err := w.uploadScreenshotsFromDir(ctx, dir, testUUID, runID); err != nil {
-			log.Debug().Err(err).Str("dir", dir).Msg("failed to upload screenshots from directory")
-		}
-	}
-	return nil
-}
-
-func (w *Worker) uploadScreenshotsFromDir(ctx context.Context, dir string, testUUID, runID string) error {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil // Directory doesn't exist, that's fine
-		}
-		return err
-	}
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			// Recursively process subdirectories
-			subDir := filepath.Join(dir, entry.Name())
-			if err := w.uploadScreenshotsFromDir(ctx, subDir, testUUID, runID); err != nil {
-				log.Debug().Err(err).Str("dir", subDir).Msg("failed to upload screenshots from subdirectory")
-			}
-			continue
-		}
-
-		// Check if file is an image
-		ext := strings.ToLower(filepath.Ext(entry.Name()))
-		if ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".webp" {
-			continue
-		}
-
-		filePath := filepath.Join(dir, entry.Name())
-		if err := w.uploadScreenshotFile(ctx, filePath, entry.Name(), testUUID, runID); err != nil {
+	for _, rel := range paths {
+		filePath := filepath.Join(workspace, filepath.FromSlash(rel))
+		if err := w.uploadScreenshotFile(ctx, filePath, rel, testUUID, runID); err != nil {
 			log.Error().Err(err).Str("file", filePath).Msg("failed to upload screenshot")
 		}
 	}
-	return nil
 }
 
-func (w *Worker) uploadScreenshotFile(ctx context.Context, filePath, filename, testUUID, runID string) error {
+// uploadScreenshotFile stores one image. relPath is unique within the run
+// (Playwright reuses names like test-finished-1.png in every test folder).
+func (w *Worker) uploadScreenshotFile(ctx context.Context, filePath, relPath, testUUID, runID string) error {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return err
@@ -385,8 +353,8 @@ func (w *Worker) uploadScreenshotFile(ctx context.Context, filePath, filename, t
 		return err
 	}
 
-	// Upload to storage: {testUUID}/log/{runUUID}/{filename}
-	storageKey := fmt.Sprintf("%s/log/%s/%s", testUUID, runID, filename)
+	// Upload to storage: {testUUID}/log/{runUUID}/{relPath}
+	storageKey := fmt.Sprintf("%s/log/%s/%s", testUUID, runID, relPath)
 	_, err = w.storage.UploadBlob(storageKey, file, fileInfo.Size())
 	if err != nil {
 		return fmt.Errorf("upload screenshot to storage: %w", err)
@@ -396,7 +364,7 @@ func (w *Worker) uploadScreenshotFile(ctx context.Context, filePath, filename, t
 	screenshot := &model.Screenshot{
 		UUID:       uuid.NewString(),
 		RunID:      runID,
-		Filename:   filename,
+		Filename:   relPath,
 		StorageKey: storageKey,
 		CreatedAt:  time.Now().UTC(),
 	}
@@ -405,6 +373,6 @@ func (w *Worker) uploadScreenshotFile(ctx context.Context, filePath, filename, t
 		return fmt.Errorf("create screenshot record: %w", err)
 	}
 
-	log.Info().Str("screenshot_id", screenshot.UUID).Str("filename", filename).Msg("screenshot uploaded")
+	log.Info().Str("screenshot_id", screenshot.UUID).Str("filename", relPath).Msg("screenshot uploaded")
 	return nil
 }

@@ -3,7 +3,9 @@ package handler
 import (
 	"encoding/json"
 	"io"
+	"mime"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -629,7 +631,12 @@ func (hl *Handler) DownloadScreenshot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "image/png")
-	w.Header().Set("Content-Disposition", "inline; filename=\""+screenshot.Filename+"\"")
+	contentType := mime.TypeByExtension(path.Ext(screenshot.Filename))
+	if contentType == "" {
+		contentType = "image/png"
+	}
+	w.Header().Set("Content-Type", contentType)
+	// Filename may be a workspace-relative path; the browser only needs the base name.
+	w.Header().Set("Content-Disposition", "inline; filename=\""+path.Base(screenshot.Filename)+"\"")
 	io.Copy(w, reader)
 }
