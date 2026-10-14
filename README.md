@@ -2,13 +2,36 @@
 
 > Monitor your production business flows, not just your code.
 
-BYOT is an open-source production monitoring platform that executes your existing test binaries — Playwright, k6, custom scripts, anything — on a schedule inside isolated Docker containers, and alerts you when something actually breaks.
+BYOT is an open-source production monitoring platform. It runs the tests you already have (Playwright, k6, Node, Python, Go binaries) on a schedule inside isolated Docker containers, and alerts you when something actually breaks.
+
+## Demo
+
+<video src="docs/launch.mp4" controls muted width="100%"></video>
+
+▶️ **[Watch the launch video](docs/launch.mp4)** if the player above doesn't load.
+
+---
+
+## Features
+
+- **Any test runtime:** `node`, `python`, `go`, `k6`, `playwright` (zip bundle)
+- **Isolated execution:** every run gets a fresh, hardened container (`--cap-drop=ALL`, `no-new-privileges`, `--read-only`, tmpfs `/tmp`, non-root user)
+- **Cron scheduling:** per-test schedules, plus a global pause/resume switch
+- **Alerts:** Slack-compatible webhooks with a consecutive-failure threshold and recovery notices, so flaky tests don't page anyone
+- **Per-test limits:** timeout, memory, CPU and network access, capped by server-wide maximums
+- **Env vars and secrets:** secrets encrypted at rest with AES-256-GCM, write-only through the API, and redacted from logs
+- **Logs and screenshots:** timestamped stdout/stderr per run; Playwright screenshots are collected automatically
+- **Worker pool:** runs jobs in parallel with bounded concurrency, drains gracefully on shutdown, and sweeps stale jobs
+- **Retention:** an hourly sweep prunes old runs, logs and screenshots
+- **Auth:** optional Supabase sign-in protects every write route
+- **Storage:** MinIO (or any S3-compatible store) or Supabase Storage
+- **Web UI:** landing page at `/` and dashboard at `/app`
 
 ---
 
 ## The problem CI/CD doesn't solve
 
-**"I can just run my Playwright tests in CI on a schedule"** — that's the first objection. GitHub Actions cron jobs exist. So why BYOT?
+**"I can just run my Playwright tests in CI on a schedule."** That's the first objection. GitHub Actions cron jobs exist, so why BYOT?
 
 **1. CI runs on code changes. Production breaks between deploys.**
 
@@ -19,18 +42,9 @@ Monday 11pm  — payments are broken ❌
 Tuesday 9am  — customer complains
 ```
 
-Your CI never ran. Your tests never ran. Nobody knew. BYOT runs continuously, regardless of deploys.
+Your CI never ran, so nobody knew. BYOT runs continuously, whether or not you deploy.
 
-**2. CI tests your code. BYOT tests your dependencies.**
-
-Your code didn't change. But:
-- A third-party API changed their response format
-- Your CDN went down
-- The database ran out of connections
-- An SSL certificate expired
-- An external payment provider had an outage
-
-None of these show up in CI. All of them show up in BYOT.
+**2. CI tests your code. BYOT tests your dependencies.** A third-party API changes its response format, your CDN goes down, the database runs out of connections, an SSL certificate expires. None of these show up in CI. All of them show up in BYOT.
 
 **3. CI is for developers. BYOT is for the business.**
 
@@ -39,27 +53,9 @@ CI/CD  →  "did my code break?"
 BYOT   →  "is my checkout working right now?"
 ```
 
-Product managers, founders, and support teams care about the second question. They can't read CI logs. BYOT gives them a green/red answer.
+**4. Flaky tests kill CI adoption.** BYOT's consecutive-failure threshold means flaky tests don't cause noise, so teams actually keep them running.
 
-**4. Flaky tests kill CI adoption.**
-
-Teams disable E2E tests in CI because flaky tests block deploys. Those tests rot. BYOT's consecutive-failure threshold means flaky tests don't cause noise — so teams actually keep them running.
-
-**5. One incident pays for itself.**
-
-One missed P0 = hours of engineer time + customer churn. If BYOT catches one checkout failure before a customer does, it paid for itself 10× over.
-
----
-
-## Who it's for
-
-Not solo developers. Not teams with one service.
-
-**Target:** Teams with 5+ engineers, multiple services, external dependencies, and an existing E2E test suite that's gathered dust because "it's too flaky for CI." That's a real market, and they get immediate value.
-
----
-
-## Why not Datadog or Checkly?
+### Why not Datadog or Checkly?
 
 | Feature | BYOT | Datadog | Checkly |
 |---|---|---|---|
@@ -68,145 +64,152 @@ Not solo developers. Not teams with one service.
 | Open source | ✓ | ✗ | ✗ |
 | Flaky test detection | ✓ | paid tier | limited |
 | Custom runtimes | ✓ | ✗ | limited |
-| Free tier | unlimited | 5 tests | 3 tests |
-
-Datadog does this — at $500+/month with a proprietary DSL you have to learn. BYOT does it for $29 or free, with the tests you already wrote.
 
 ---
 
 ## Quick Start
 
-**Prerequisites:** Docker, Docker Compose, Go 1.21+
-
-### 1. Start the infrastructure
+**Prerequisites:** Docker, Docker Compose, Go 1.26+, and the [`migrate`](https://github.com/golang-migrate/migrate) CLI
 
 ```bash
+# 1. Start Postgres (5432) and MinIO (9000, console 9001)
 docker compose up -d
-```
 
-This starts PostgreSQL (port 5432) and MinIO (port 9000 / console 9001).
-
-### 2. Configure environment
-
-```bash
+# 2. Configure (the defaults work with docker compose)
 cp .env.example .env
-# Edit .env if needed — defaults work out of the box with docker compose
-```
 
-### 3. Run the server
+# 3. Apply database migrations
+migrate -path ./migrations -database "postgres://fnx:fnx@localhost:5432/fnx?sslmode=disable" up
 
-```bash
+# 4. Pre-pull the runtime images (optional, avoids a slow first run)
+go run . pull-images
+
+# 5. Start the server on :3000
 go run .
-# Starts on :3000 — migrations run automatically
 ```
+
+Open http://localhost:3000/app for the dashboard.
 
 ---
 
-## API
+## Configuration
 
-### Health check
+All settings come from environment variables or `.env`. See [.env.example](.env.example) for the full annotated list.
 
-```
-GET /health
-→ { "status": "ok" }
-```
-
-### Upload a test binary
-
-```
-POST /uploadBinary
-Content-Type: multipart/form-data
-```
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `binary` | file | yes | Compiled test binary |
-| `runtime` | string | yes | `go` or `node` |
-
-```bash
-curl -X POST http://localhost:3000/uploadBinary \
-  -F "binary=@./e2e/checkout.test" \
-  -F "runtime=node"
-
-# → { "id": "a3f8b2c1-...", "message": "binary uploaded successfully" }
-```
-
-### Run a test
-
-```
-POST /run/{id}
-Content-Type: application/json
-
-{ "filename": "a3f8b2c1-...", "runtime": "node", "timeout": 60 }
-```
-
-Output is stdout/stderr from the container, timestamped per line:
-
-```
-2026-05-03T10:30:00Z [stdout] ✓ Login successful
-2026-05-03T10:30:04Z [stdout] ✓ Cart updated
-2026-05-03T10:30:06Z [stderr] ✗ Pay button not found
-```
+| Variable | Default | Description |
+|---|---|---|
+| `STORAGE_PROVIDER` | `minio` | `minio` or `supabase` |
+| `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_BUCKET`, `MINIO_REGION` | | MinIO / S3 settings |
+| `SUPABASE_URL`, `SUPABASE_KEY`, `SUPABASE_BUCKET` | | Supabase Storage (`SUPABASE_KEY` is the `sb_secret_...` key) |
+| `SUPABASE_PUBLISHABLE_KEY` | empty | `sb_publishable_...` key. With `SUPABASE_URL` set, it enables sign-in on write routes. Leave it empty to disable auth |
+| `DB_URL` | | Postgres connection string |
+| `SECRETS_KEY` | empty | Base64 32-byte key for secret env vars (`openssl rand -base64 32`). Back it up |
+| `WORKER_CONCURRENCY` | `3` | Parallel jobs per instance (max 32) |
+| `RETENTION_MAX_RUNS_PER_TEST` | `100` | Runs kept per test. `0` disables the limit |
+| `RETENTION_DAYS` | `30` | Maximum run age. `0` disables the limit |
+| `MAX_DOCKER_MEMORY_MB` | `2048` | Upper bound for per-test memory |
+| `MAX_DOCKER_CPUS` | `4` | Upper bound for per-test CPUs |
 
 ---
 
 ## Runtimes
 
-| Runtime | Docker image | Notes |
-|---|---|---|
-| `go` | `alpine` | Executes compiled binary directly |
-| `node` | `node:18` | Runs with `node` interpreter |
+| Runtime | Image | Default command | Network |
+|---|---|---|---|
+| `node` | `node:18-alpine` | `node ./artifact` | off |
+| `python` | `python:3.12-alpine` | `python ./artifact` | off |
+| `go` | `ubuntu:24.04` (glibc, so CGO binaries run) | `./artifact` | off |
+| `k6` | `grafana/k6:latest` | `k6 run ./artifact` | on |
+| `playwright` | `mcr.microsoft.com/playwright:v1.49.1-jammy` | `npx playwright test` | on |
 
-More runtimes (Python, Ruby, Deno) are planned — contributions welcome.
+Uploads are limited to 10 MB. Playwright suites are uploaded as a `.zip` bundle (up to 200 MB) that includes `node_modules`; see [testfunction/encardio-playwright/build-zip.sh](testfunction/encardio-playwright/build-zip.sh) for an example.
+
+---
+
+## API
+
+When auth is enabled, every non-GET route needs a Supabase bearer token, and `/tests/{id}/env` needs one for reads too.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/health` | Health check |
+| `POST` | `/uploadBinary` | Upload a test (multipart, see below) |
+| `GET` | `/tests` | List tests with their last run |
+| `GET` / `DELETE` | `/tests/{id}` | Get or delete a test |
+| `PATCH` | `/tests/{id}/config` | Update command, timeout, cron, webhook, threshold, limits |
+| `POST` | `/tests/{id}/schedule/start` · `/schedule/stop` | Enable or disable the schedule |
+| `GET` | `/tests/{id}/runs` | Run history |
+| `GET` / `PUT` | `/tests/{id}/env` | List or set env vars (`{name, value, is_secret}`) |
+| `DELETE` | `/tests/{id}/env/{name}` | Remove an env var |
+| `POST` | `/run` | Queue a run: `{"testId": "..."}` and get back `job_id` |
+| `POST` | `/stop` | Cancel the queued and running jobs for `{"testId": "..."}` |
+| `GET` | `/status/{jobId}` | Job status |
+| `GET` | `/runs/{runId}/log` | Plain-text run log |
+| `GET` | `/screenshots/{runId}` · `/screenshot/{id}` | List or download screenshots |
+| `GET` / `POST` | `/scheduler/status` · `/scheduler/stop` · `/scheduler/start` | Global scheduler pause and resume |
+
+### Upload fields
+
+| Field | Required | Description |
+|---|---|---|
+| `binary` | yes | The test file (`.zip` for Playwright) |
+| `runtime` | yes | `node`, `python`, `go`, `k6`, `playwright` |
+| `name` | no | Display name (defaults to the filename) |
+| `command` | no | Override the runtime's default command |
+| `timeout` | no | Seconds (default 30) |
+| `cron` | no | Cron expression. Setting it enables the schedule |
+| `webhook_url` | no | Slack-compatible webhook for alerts |
+| `failure_threshold` | no | Consecutive failures before an alert fires |
+| `docker_memory_mb`, `docker_cpus`, `docker_network_enabled` | no | Per-test resource limits |
+
+```bash
+curl -X POST http://localhost:3000/uploadBinary \
+  -F "binary=@./checkout.zip" \
+  -F "runtime=playwright" \
+  -F "cron=*/15 * * * *" \
+  -F "webhook_url=https://hooks.slack.com/services/..."
+# → { "id": "a3f8b2c1-...", "message": "binary uploaded successfully" }
+
+curl -X POST http://localhost:3000/run -d '{"testId":"a3f8b2c1-..."}'
+# → { "job_id": "...", "status": "queued", "message": "job queued for execution" }
+```
 
 ---
 
 ## Architecture
 
 ```
-Client
-  │
-  ▼
-HTTP Server (:3000)
-  │
-  ├─ POST /uploadBinary ──► MinIO  ({uuid}/binary)
-  │
-  └─ POST /run/{id}
-       │
-       ├─ Download binary from MinIO
-       ├─ docker run --rm -v /tmp/...:/app/binary <image>
-       ├─ Stream stdout + stderr (RFC3339 timestamps)
-       └─ Upload logs to MinIO  ({uuid}/logs/{timestamp}.txt)
-
-PostgreSQL
-  ├─ tests       (uuid, runtime, binary_url, created_at)
-  └─ tests_runs  (uuid, test_id, status, duration_ms, log_url, ...)
+Browser / curl
+     │
+     ▼
+HTTP server (:3000) ── Supabase auth (write routes)
+     │
+     ├─ /uploadBinary ──► Storage (MinIO / Supabase)
+     ├─ /run ───────────► Postgres job queue ◄── Scheduler (cron, every 30s)
+     │                          │
+     │                          ▼
+     │                    Worker pool (WORKER_CONCURRENCY)
+     │                          │  download artifact, decrypt env
+     │                          ▼
+     │                    docker run (hardened, ephemeral, byot-<jobID>)
+     │                          │
+     │                          ├─► logs + screenshots ──► Storage
+     │                          ├─► run result ──► Postgres
+     │                          └─► webhook alert / recovery
+     │
+     └─ Retention sweeper (hourly)
 ```
-
-Each execution runs in a **fresh, ephemeral Docker container** — no shared state between runs.
-
----
-
-## Self-hosting
-
-The full stack is a single `docker compose up`. For production:
-
-- Point `DB_URL` at a managed Postgres (RDS, Supabase, Neon, etc.)
-- Point MinIO config at S3 or any S3-compatible store
-- Run the Go binary behind a reverse proxy (nginx, Caddy)
 
 ---
 
 ## Development
 
 ```bash
-docker compose up -d  # start infra
-air                   # hot reload (go install github.com/air-verse/air@latest)
+docker compose up -d   # infra
+air                    # hot reload (go install github.com/air-verse/air@latest)
 go test ./...
 ```
 
----
-
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE).
