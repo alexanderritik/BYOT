@@ -24,7 +24,7 @@ import (
 
 const (
 	maxFileSize   = 10 << 20
-	maxBundleSize = 200 << 20 // playwright zip with bundled node_modules
+	maxBundleSize = 200 << 20 // playwright zip with bundled node_modules, or a locust bundle
 )
 
 type Handler struct {
@@ -534,10 +534,19 @@ func (hl *Handler) UploadBinary(h http.ResponseWriter, r *http.Request) {
 	logger.Info().Msg("binary upload requested")
 
 	sizeLimit := int64(maxFileSize)
-	if runtime == "playwright" {
+	lowerName := strings.ToLower(header.Filename)
+	switch runtime {
+	case "playwright":
 		sizeLimit = int64(maxBundleSize)
-		if !strings.HasSuffix(strings.ToLower(header.Filename), ".zip") {
+		if !strings.HasSuffix(lowerName, ".zip") {
 			jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "playwright runtime requires a .zip project bundle"})
+			return
+		}
+	case "locust":
+		if strings.HasSuffix(lowerName, ".zip") {
+			sizeLimit = int64(maxBundleSize)
+		} else if !strings.HasSuffix(lowerName, ".py") {
+			jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "locust runtime requires a locustfile (.py) or a .zip bundle with locustfile.py at its root"})
 			return
 		}
 	}

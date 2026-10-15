@@ -1637,6 +1637,18 @@ function bindDropzone(){
 
   if (!dz || !input) return;
 
+  const rt = document.getElementById('rt');
+  const rtHint = document.getElementById('rt-hint');
+  const hints = {
+    locust: 'A locustfile (.py) or a .zip with locustfile.py and an optional requirements.txt. Set LOCUST_HOST in env vars; thresholds like LOCUST_MAX_P95_MS are optional.',
+    playwright: 'A .zip of your Playwright project, including node_modules.',
+  };
+  if (rt && rtHint) {
+    const showHint = ()=>{ rtHint.textContent = hints[rt.value] || ''; };
+    rt.addEventListener('change', showHint);
+    showHint();
+  }
+
   dz.addEventListener('click', ()=> input.click());
 
   input.addEventListener('change', ()=>{
@@ -1689,7 +1701,9 @@ function renderUpload(){
 
           <label for="rt">Runtime</label>
 
-          <select id="rt"><option value="go">go</option><option value="node">node</option><option value="python">python</option><option value="k6">k6</option><option value="playwright">playwright</option></select>
+          <select id="rt"><option value="go">go</option><option value="node">node</option><option value="python">python</option><option value="k6">k6</option><option value="locust">locust</option><option value="playwright">playwright</option></select>
+
+          <span class="hint" id="rt-hint"></span>
 
         </div>
 

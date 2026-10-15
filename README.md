@@ -14,7 +14,7 @@ BYOT is an open-source production monitoring platform. It runs the tests you alr
 
 ## Features
 
-- **Any test runtime:** `node`, `python`, `go`, `k6`, `playwright` (zip bundle)
+- **Any test runtime:** `node`, `python`, `go`, `k6`, `locust`, `playwright` (zip bundle)
 - **Isolated execution:** every run gets a fresh, hardened container (`--cap-drop=ALL`, `no-new-privileges`, `--read-only`, tmpfs `/tmp`, non-root user)
 - **Cron scheduling:** per-test schedules, plus a global pause/resume switch
 - **Alerts:** Slack-compatible webhooks with a consecutive-failure threshold and recovery notices, so flaky tests don't page anyone
@@ -120,7 +120,34 @@ All settings come from environment variables or `.env`. See [.env.example](.env.
 | `python` | `python:3.12-alpine` | `python ./artifact` | off |
 | `go` | `ubuntu:24.04` (glibc, so CGO binaries run) | `./artifact` | off |
 | `k6` | `grafana/k6:latest` | `k6 run ./artifact` | on |
+| `locust` | `locustio/locust:latest` | `sh /app/.byot/run.sh` (see below) | on |
 | `playwright` | `mcr.microsoft.com/playwright:v1.49.1-jammy` | `npx playwright test` | on |
+
+### Locust
+
+Upload a single locustfile (`.py`) or a `.zip` bundle with `locustfile.py` at its root (a single wrapper folder is fine). A bundle can include helper modules, data files, a `locust.conf` and a `requirements.txt`, which is installed before the run. Locust itself is already in the image.
+
+The run is headless and configured with Locust's own env vars (or the bundle's `locust.conf`):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `LOCUST_HOST` | none (required unless the User class sets `host`) | Base URL to test |
+| `LOCUST_USERS` | `5` | Peak users |
+| `LOCUST_SPAWN_RATE` | `1` | Users started per second |
+| `LOCUST_RUN_TIME` | up to `30s`, whatever fits in the test timeout | How long to run, e.g. `2m` |
+
+A run time that doesn't fit in the test timeout fails straight away with the timeout you need, so raise the timeout for longer runs (e.g. `LOCUST_RUN_TIME=5m` needs a timeout of about 310s).
+
+A run fails if any request fails. Optional thresholds turn it into an SLO check:
+
+| Variable | Fails the run when |
+|---|---|
+| `LOCUST_MAX_P95_MS` | p95 response time is above this (ms) |
+| `LOCUST_MAX_AVG_MS` | average response time is above this (ms) |
+| `LOCUST_MAX_FAIL_RATIO` | failed-request ratio is above this, e.g. `0.01` for 1%. Setting it allows failures below the ratio |
+| `LOCUST_MIN_RPS` | throughput is below this many requests per second |
+
+The log shows a `[byot] PASS` / `FAIL` line per threshold. The same settings work as `locust.conf` keys (`max-p95-ms = 500`). To pass extra Locust flags, override the command, e.g. `sh /app/.byot/run.sh --tags smoke`.
 
 Uploads are limited to 10 MB. Playwright suites are uploaded as a `.zip` bundle (up to 200 MB) that includes `node_modules`; see [testfunction/encardio-playwright/build-zip.sh](testfunction/encardio-playwright/build-zip.sh) for an example.
 
@@ -152,8 +179,8 @@ When auth is enabled, every non-GET route needs a Supabase bearer token, and `/t
 
 | Field | Required | Description |
 |---|---|---|
-| `binary` | yes | The test file (`.zip` for Playwright) |
-| `runtime` | yes | `node`, `python`, `go`, `k6`, `playwright` |
+| `binary` | yes | The test file (`.zip` for Playwright; `.py` or `.zip` for Locust) |
+| `runtime` | yes | `node`, `python`, `go`, `k6`, `locust`, `playwright` |
 | `name` | no | Display name (defaults to the filename) |
 | `command` | no | Override the runtime's default command |
 | `timeout` | no | Seconds (default 30) |

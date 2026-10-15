@@ -8,6 +8,7 @@ const (
 	ImageGo         = "ubuntu:24.04"
 	ImagePython     = "python:3.12-alpine"
 	ImageK6         = "grafana/k6:latest"
+	ImageLocust     = "locustio/locust:latest"
 	ImagePlaywright = "mcr.microsoft.com/playwright:v1.49.1-jammy"
 )
 
@@ -16,5 +17,6 @@ var Images = []string{
 	ImageGo,
 	ImagePython,
 	ImageK6,
+	ImageLocust,
 	ImagePlaywright,
 }

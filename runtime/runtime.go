@@ -49,6 +49,14 @@ var runtimes = map[string]RuntimeSpec{
 		Command:        "k6 run ./artifact",
 		NetworkEnabled: true,
 	},
+	// run.sh (staged by StageSupportFiles) handles single files and zip
+	// bundles, fits the run inside the timeout and applies thresholds.
+	// Extra arguments go to locust: sh /app/.byot/run.sh --tags smoke
+	"locust": {
+		Image:          ImageLocust,
+		Command:        "sh /app/.byot/run.sh",
+		NetworkEnabled: true,
+	},
 	"playwright": {
 		Image:          ImagePlaywright,
 		Command:        "npx playwright test",

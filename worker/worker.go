@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/alexanderritik/mini-lambda/alert"
@@ -158,7 +159,7 @@ func (w *Worker) executeJob(ctx context.Context, job *model.Job) error {
 		return err
 	}
 
-	if test.Runtime == "playwright" {
+	if runtime.IsBundle(test.Runtime, test.OriginalFilename) {
 		zipPath := filepath.Join(workspace, "bundle.zip")
 		dst, err := os.OpenFile(zipPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 		if err != nil {
@@ -172,7 +173,7 @@ func (w *Worker) executeJob(ctx context.Context, job *model.Job) error {
 			return err
 		}
 		if err := bundle.UnzipFile(workspace, zipPath); err != nil {
-			return fmt.Errorf("unpack playwright bundle: %w", err)
+			return fmt.Errorf("unpack %s bundle: %w", test.Runtime, err)
 		}
 		_ = os.Remove(zipPath)
 	} else {
@@ -193,6 +194,9 @@ func (w *Worker) executeJob(ctx context.Context, job *model.Job) error {
 	baseSpec, ok := runtime.GetRuntime(test.Runtime)
 	if !ok {
 		return fmt.Errorf("unsupported runtime: %s", test.Runtime)
+	}
+	if err := runtime.StageSupportFiles(test.Runtime, workspace); err != nil {
+		return fmt.Errorf("stage %s support files: %w", test.Runtime, err)
 	}
 
 	command := test.Command
@@ -218,6 +222,10 @@ func (w *Worker) executeJob(ctx context.Context, job *model.Job) error {
 	if test.TimeoutSeconds <= 0 {
 		timeout = 30 * time.Second
 	}
+
+	// Lets the test budget its own run time (the locust runtime uses these).
+	env["BYOT_TIMEOUT_SECONDS"] = strconv.Itoa(int(timeout.Seconds()))
+	env["BYOT_STARTED_AT"] = strconv.FormatInt(time.Now().Unix(), 10)
 
 	var preRunImages imageSnapshot
 	if test.Runtime == "playwright" {
