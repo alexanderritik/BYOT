@@ -2,13 +2,15 @@
 
 > Monitor your production business flows, not just your code.
 
-BYOT is an open-source production monitoring platform. It runs the tests you already have (Playwright, k6, Node, Python, Go binaries) on a schedule inside isolated Docker containers, and alerts you when something actually breaks.
+BYOT is an open-source production monitoring platform. It runs the tests you already have (Playwright, k6, Locust, Node, Python, Go binaries) on a schedule inside isolated Docker containers, and alerts you when something actually breaks.
+
+> **Scope:** BYOT is built for a single team running it on their own infrastructure. There is no multi-tenancy yet: every signed-in user can see and manage every test.
 
 ## Demo
 
-<video src="docs/launch.mp4" controls muted width="100%"></video>
+[![Watch the 30-second launch video](docs/og.png)](docs/launch.mp4)
 
-▶️ **[Watch the launch video](docs/launch.mp4)** if the player above doesn't load.
+▶️ **[Watch the launch video](docs/launch.mp4)** (30s)
 
 ---
 
@@ -55,21 +57,23 @@ BYOT   →  "is my checkout working right now?"
 
 **4. Flaky tests kill CI adoption.** BYOT's consecutive-failure threshold means flaky tests don't cause noise, so teams actually keep them running.
 
-### Why not Datadog or Checkly?
+### How it compares
 
-| Feature | BYOT | Datadog | Checkly |
+Datadog Synthetics and Checkly are mature hosted products, and Checkly in particular runs Playwright tests well. BYOT is for teams that want the same idea fully open source, on their own servers, and across more test runtimes.
+
+| | BYOT | Datadog Synthetics | Checkly |
 |---|---|---|---|
-| Use existing tests | ✓ | ✗ | ✗ |
-| Self-hostable | ✓ | ✗ | ✗ |
-| Open source | ✓ | ✗ | ✗ |
-| Flaky test detection | ✓ | paid tier | limited |
-| Custom runtimes | ✓ | ✗ | limited |
+| Open source (MIT) | ✓ | ✗ | CLI only |
+| Runs entirely on your infrastructure | ✓ | private locations, hosted control plane | private locations, hosted control plane |
+| Runtimes | Playwright, k6, Locust, Node, Python, Go binaries | Datadog's own browser and API tests | Playwright, API checks |
+| Pricing | free, your hardware | per test run | per check run |
+| Managed service, global locations, SLAs | ✗ | ✓ | ✓ |
 
 ---
 
 ## Quick Start
 
-**Prerequisites:** Docker, Docker Compose, Go 1.26+, and the [`migrate`](https://github.com/golang-migrate/migrate) CLI
+**Prerequisites:** Docker, Docker Compose and Go 1.26+
 
 ```bash
 # 1. Start Postgres (5432) and MinIO (9000, console 9001)
@@ -78,17 +82,14 @@ docker compose up -d
 # 2. Configure (the defaults work with docker compose)
 cp .env.example .env
 
-# 3. Apply database migrations
-migrate -path ./migrations -database "postgres://fnx:fnx@localhost:5432/fnx?sslmode=disable" up
-
-# 4. Pre-pull the runtime images (optional, avoids a slow first run)
+# 3. Pre-pull the runtime images (optional, avoids a slow first run)
 go run . pull-images
 
-# 5. Start the server on :3000
+# 4. Start the server on :3000 (database migrations run automatically)
 go run .
 ```
 
-Open http://localhost:3000/app for the dashboard.
+Open http://localhost:3000/app for the dashboard, then upload one of the ready-made tests in [examples/](examples/) (a k6 API check, a Locust load test and a Playwright browser flow) to see a run end to end.
 
 ---
 
@@ -109,6 +110,8 @@ All settings come from environment variables or `.env`. See [.env.example](.env.
 | `RETENTION_DAYS` | `30` | Maximum run age. `0` disables the limit |
 | `MAX_DOCKER_MEMORY_MB` | `2048` | Upper bound for per-test memory |
 | `MAX_DOCKER_CPUS` | `4` | Upper bound for per-test CPUs |
+| `MAX_TIMEOUT_SECONDS` | `900` | Upper bound for per-test timeouts |
+| `AUTO_MIGRATE` | `true` | Apply database migrations on startup. Set `false` to run them yourself with the [`migrate`](https://github.com/golang-migrate/migrate) CLI |
 
 ---
 
@@ -116,11 +119,11 @@ All settings come from environment variables or `.env`. See [.env.example](.env.
 
 | Runtime | Image | Default command | Network |
 |---|---|---|---|
-| `node` | `node:18-alpine` | `node ./artifact` | off |
+| `node` | `node:24-alpine` | `node ./artifact` | off |
 | `python` | `python:3.12-alpine` | `python ./artifact` | off |
 | `go` | `ubuntu:24.04` (glibc, so CGO binaries run) | `./artifact` | off |
-| `k6` | `grafana/k6:latest` | `k6 run ./artifact` | on |
-| `locust` | `locustio/locust:latest` | `sh /app/.byot/run.sh` (see below) | on |
+| `k6` | `grafana/k6:2.3.0` | `k6 run ./artifact` | on |
+| `locust` | `locustio/locust:2.46.7` | `sh /app/.byot/run.sh` (see below) | on |
 | `playwright` | `mcr.microsoft.com/playwright:v1.49.1-jammy` | `npx playwright test` | on |
 
 ### Locust
@@ -149,7 +152,7 @@ A run fails if any request fails. Optional thresholds turn it into an SLO check:
 
 The log shows a `[byot] PASS` / `FAIL` line per threshold. The same settings work as `locust.conf` keys (`max-p95-ms = 500`). To pass extra Locust flags, override the command, e.g. `sh /app/.byot/run.sh --tags smoke`.
 
-Uploads are limited to 10 MB. Playwright suites are uploaded as a `.zip` bundle (up to 200 MB) that includes `node_modules`; see [testfunction/encardio-playwright/build-zip.sh](testfunction/encardio-playwright/build-zip.sh) for an example.
+Uploads are limited to 10 MB. Playwright suites are uploaded as a `.zip` bundle (up to 200 MB) that includes `node_modules`, with `@playwright/test` pinned to **1.49.1** to match the browser image. See [examples/playwright-todo/build-zip.sh](examples/playwright-todo/build-zip.sh) for an example.
 
 ---
 
@@ -183,9 +186,9 @@ When auth is enabled, every non-GET route needs a Supabase bearer token, and `/t
 | `runtime` | yes | `node`, `python`, `go`, `k6`, `locust`, `playwright` |
 | `name` | no | Display name (defaults to the filename) |
 | `command` | no | Override the runtime's default command |
-| `timeout` | no | Seconds (default 30) |
+| `timeout` | no | Seconds (default 30, max `MAX_TIMEOUT_SECONDS`) |
 | `cron` | no | Cron expression. Setting it enables the schedule |
-| `webhook_url` | no | Slack-compatible webhook for alerts |
+| `webhook_url` | no | Slack-compatible webhook for alerts. API reads return it masked (`https://hooks.slack.com/…a1b2`) |
 | `failure_threshold` | no | Consecutive failures before an alert fires |
 | `docker_memory_mb`, `docker_cpus`, `docker_network_enabled` | no | Per-test resource limits |
 
@@ -228,6 +231,18 @@ HTTP server (:3000) ── Supabase auth (write routes)
 ```
 
 ---
+
+## Security model
+
+BYOT runs code you upload, so it is built to contain that code, not to run code from strangers.
+
+- **Each run gets a fresh container** that is removed afterwards: all Linux capabilities dropped, `no-new-privileges`, read-only root filesystem, non-root user, 128-process limit, and memory, CPU and timeout caps.
+- **Network is off by default** for `node`, `python` and `go`, and on for `k6`, `locust` and `playwright`, which need it. You can override it per test.
+- **Secrets** are encrypted at rest with AES-256-GCM, never returned by the API, passed to containers by name (so they don't appear in the process list) and redacted from logs.
+- **The Docker daemon is the trust boundary.** The server starts containers through the host's Docker, so anyone who can upload a test can run code on that host inside the sandbox above. Run BYOT on a dedicated VM, enable auth before exposing it, and only give accounts to people you would trust with that.
+- **Auth** (Supabase) protects every write route. Read routes (test list, run history, logs, screenshots) stay open, so keep the server on a private network or behind a proxy if your logs are sensitive.
+
+Found a vulnerability? Please open a private [security advisory](https://github.com/alexanderritik/BYOT/security/advisories/new) instead of a public issue.
 
 ## Development
 

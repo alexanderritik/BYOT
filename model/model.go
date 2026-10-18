@@ -1,6 +1,8 @@
 package model
 
 import (
+	"encoding/json"
+	"net/url"
 	"time"
 )
 
@@ -24,6 +26,32 @@ type Test struct {
 	DockerMemoryMB       *int       `db:"docker_memory_mb" json:"docker_memory_mb"`
 	DockerCPUs           *float64   `db:"docker_cpus" json:"docker_cpus"`
 	DockerNetworkEnabled *bool      `db:"docker_network_enabled" json:"docker_network_enabled"`
+}
+
+// MarshalJSON masks the webhook URL: a Slack webhook URL is a credential, and
+// test reads are not behind auth.
+func (t Test) MarshalJSON() ([]byte, error) {
+	type plain Test
+	p := plain(t)
+	p.WebhookURL = MaskWebhook(t.WebhookURL)
+	return json.Marshal(p)
+}
+
+// MaskWebhook keeps the scheme, host and last 4 characters of a webhook URL,
+// e.g. "https://hooks.slack.com/…a1b2". Empty stays empty.
+func MaskWebhook(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	tail := raw
+	if len(tail) > 4 {
+		tail = tail[len(tail)-4:]
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return "…" + tail
+	}
+	return u.Scheme + "://" + u.Host + "/…" + tail
 }
 
 // RunOutcomeAlert describes webhook notifications to send after a run completes.

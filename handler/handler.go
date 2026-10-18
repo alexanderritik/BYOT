@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime"
 	"net/http"
@@ -307,6 +308,10 @@ func (hl *Handler) updateTestConfig(w http.ResponseWriter, r *http.Request, test
 			jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "timeout_seconds must be positive"})
 			return
 		}
+		if *req.TimeoutSeconds > hl.config.MaxTimeoutSeconds {
+			jsonResponse(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("timeout_seconds exceeds maximum limit (%d)", hl.config.MaxTimeoutSeconds)})
+			return
+		}
 		test.TimeoutSeconds = *req.TimeoutSeconds
 	}
 	if req.Cron != nil {
@@ -315,7 +320,8 @@ func (hl *Handler) updateTestConfig(w http.ResponseWriter, r *http.Request, test
 	if req.ScheduleEnabled != nil {
 		test.ScheduleEnabled = *req.ScheduleEnabled
 	}
-	if req.WebhookURL != nil {
+	// Reads return a masked webhook URL; sending that mask back means "unchanged".
+	if req.WebhookURL != nil && *req.WebhookURL != model.MaskWebhook(test.WebhookURL) {
 		test.WebhookURL = strings.TrimSpace(*req.WebhookURL)
 	}
 	if req.FailureThreshold != nil {
@@ -509,9 +515,18 @@ func (hl *Handler) UploadBinary(h http.ResponseWriter, r *http.Request) {
 
 	displayName := strings.TrimSpace(r.FormValue("name"))
 	timeoutStr := r.FormValue("timeout")
-	timeout, err := strconv.Atoi(timeoutStr)
-	if err != nil || timeout == 0 {
-		timeout = 30 // default
+	timeout := 30 // default
+	if strings.TrimSpace(timeoutStr) != "" {
+		v, err := strconv.Atoi(strings.TrimSpace(timeoutStr))
+		if err != nil || v <= 0 {
+			jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "timeout must be a positive integer (seconds)"})
+			return
+		}
+		if v > hl.config.MaxTimeoutSeconds {
+			jsonResponse(h, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("timeout exceeds maximum limit (%d)", hl.config.MaxTimeoutSeconds)})
+			return
+		}
+		timeout = v
 	}
 	if runtime == "" {
 		jsonResponse(h, http.StatusBadRequest, map[string]string{"error": "runtime is required"})
