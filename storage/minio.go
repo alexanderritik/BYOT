@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -72,6 +73,17 @@ func NewMinioStorage(
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create minio client: %w", err)
+	}
+
+	// Create the bucket on first start so a fresh `docker compose up` works.
+	// If the existence check itself fails (e.g. credentials without
+	// ListBucket), carry on and let uploads report the real error.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if exists, err := client.BucketExists(ctx, bucketName); err == nil && !exists {
+		if err := client.MakeBucket(ctx, bucketName, minio.MakeBucketOptions{Region: region}); err != nil {
+			return nil, fmt.Errorf("create minio bucket %q: %w", bucketName, err)
+		}
 	}
 
 	return &MinioStorage{
