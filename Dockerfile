@@ -24,7 +24,6 @@ RUN apk add --no-cache ca-certificates tzdata docker-cli
 WORKDIR /app
 
 COPY --from=builder /out/mini-lambda /app/mini-lambda
-COPY migrations /app/migrations
 
 ENV STORAGE_PROVIDER=minio \
     MINIO_ENDPOINT="" \

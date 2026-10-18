@@ -36,6 +36,8 @@ type Config struct {
 	RetentionDays     int
 	MaxDockerMemoryMB int
 	MaxDockerCPUs     float64
+	// Upper bound for a test's timeout (MAX_TIMEOUT_SECONDS, default 900).
+	MaxTimeoutSeconds int
 }
 
 func LoadConfig() Config {
@@ -56,6 +58,10 @@ func LoadConfig() Config {
 
 	retentionMaxRuns := envInt("RETENTION_MAX_RUNS_PER_TEST", 100)
 	retentionDays := envInt("RETENTION_DAYS", 30)
+	maxTimeout := envInt("MAX_TIMEOUT_SECONDS", 900)
+	if maxTimeout == 0 {
+		maxTimeout = 900
+	}
 
 	maxMemory := 2048
 
@@ -138,6 +144,7 @@ func LoadConfig() Config {
 		RetentionDays:     retentionDays,
 		MaxDockerMemoryMB: maxMemory,
 		MaxDockerCPUs:     maxCPUs,
+		MaxTimeoutSeconds: maxTimeout,
 	}
 }
 

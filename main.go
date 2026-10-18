@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"embed"
 	"net/http"
 	"os"
 	"os/exec"
@@ -26,15 +27,21 @@ import (
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/rs/zerolog/log"
 )
 
+// Migrations are embedded so the binary needs no migrations/ folder at runtime.
+//
+//go:embed migrations/*.sql
+var migrationFiles embed.FS
+
 func runMigrations(dbURL string) error {
-	m, err := migrate.New(
-		"file://migrations",
-		dbURL,
-	)
+	src, err := iofs.New(migrationFiles, "migrations")
+	if err != nil {
+		return err
+	}
+	m, err := migrate.NewWithSourceInstance("iofs", src, dbURL)
 	if err != nil {
 		return err
 	}
@@ -68,10 +75,12 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to connect to postgres")
 	}
 
-	// migrate -path ./migrations -database "$DATABASE_URL" up
-	// if err := runMigrations(cfg.DBUrl); err != nil {
-	// 	log.Fatal().Err(err).Msg("migration failed")
-	// }
+	if os.Getenv("AUTO_MIGRATE") != "false" {
+		if err := runMigrations(cfg.DBUrl); err != nil {
+			log.Fatal().Err(err).Msg("migration failed (set AUTO_MIGRATE=false to manage migrations yourself)")
+		}
+		log.Info().Msg("database migrations up to date")
+	}
 
 	var store storage.Storage
 

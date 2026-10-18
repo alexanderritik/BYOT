@@ -12,3 +12,4 @@ testfunction
 *.md
 Dockerfile
 docker-compose.yml
+notes

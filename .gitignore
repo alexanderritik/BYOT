@@ -7,3 +7,5 @@ testfunction/
 mini-lambda
 
 .env
+# Personal notes, kept local only
+notes/
