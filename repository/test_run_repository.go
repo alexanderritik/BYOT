@@ -4,7 +4,7 @@ package repository
 import (
 	"context"
 
-	"github.com/alexanderritik/mini-lambda/model"
+	"github.com/alexanderritik/byot/model"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )

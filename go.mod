@@ -1,4 +1,4 @@
-module github.com/alexanderritik/mini-lambda
+module github.com/alexanderritik/byot
 
 go 1.26.1
 

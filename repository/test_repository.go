@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/alexanderritik/mini-lambda/alert"
-	"github.com/alexanderritik/mini-lambda/model"
+	"github.com/alexanderritik/byot/alert"
+	"github.com/alexanderritik/byot/model"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )

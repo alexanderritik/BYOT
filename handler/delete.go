@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/alexanderritik/mini-lambda/runtime"
+	"github.com/alexanderritik/byot/runtime"
 	"github.com/jackc/pgx/v5"
 	"github.com/rs/zerolog/log"
 )

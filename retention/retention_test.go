@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alexanderritik/mini-lambda/repository"
+	"github.com/alexanderritik/byot/repository"
 )
 
 type fakeRepo struct {

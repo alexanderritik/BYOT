@@ -17,7 +17,7 @@ services:
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
       - MINIO_BUCKET=byot
-      - DB_URL=postgres://fnx:${POSTGRES_PASSWORD:-fnx}@postgres:5432/fnx?sslmode=disable
+      - DB_URL=postgres://${POSTGRES_USER:-byot}:${POSTGRES_PASSWORD:-byot}@postgres:5432/${POSTGRES_DB:-byot}?sslmode=disable
       # Must match the bind mount below (same path on host and container).
       - WORKSPACE_DIR=/tmp/byot-runs
       - SECRETS_KEY=${SECRETS_KEY:-}
@@ -64,13 +64,16 @@ services:
       # Localhost only, for `go run .` during development.
       - "127.0.0.1:5432:5432"
     environment:
-      - POSTGRES_USER=fnx
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-fnx}
-      - POSTGRES_DB=fnx
+      # Applied only when the volume is first created. Installs from 0.1.0
+      # set POSTGRES_USER=fnx and POSTGRES_DB=fnx in .env to keep their data
+      # (and POSTGRES_PASSWORD=fnx if they never set their own).
+      - POSTGRES_USER=${POSTGRES_USER:-byot}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-byot}
+      - POSTGRES_DB=${POSTGRES_DB:-byot}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U fnx -d fnx"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 2s
       timeout: 5s
       retries: 30

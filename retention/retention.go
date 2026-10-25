@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alexanderritik/mini-lambda/repository"
-	"github.com/alexanderritik/mini-lambda/storage"
+	"github.com/alexanderritik/byot/repository"
+	"github.com/alexanderritik/byot/storage"
 	"github.com/rs/zerolog/log"
 )
 

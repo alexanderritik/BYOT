@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/alexanderritik/mini-lambda/runtime"
+	"github.com/alexanderritik/byot/runtime"
 )
 
 type StopRequest struct {

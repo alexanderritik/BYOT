@@ -14,7 +14,7 @@ COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
-    go build -trimpath -ldflags="-s -w" -o /out/mini-lambda .
+    go build -trimpath -ldflags="-s -w" -o /out/byot .
 
 FROM alpine:3.22
 
@@ -23,7 +23,7 @@ RUN apk add --no-cache ca-certificates tzdata docker-cli
 
 WORKDIR /app
 
-COPY --from=builder /out/mini-lambda /app/mini-lambda
+COPY --from=builder /out/byot /app/byot
 
 ENV STORAGE_PROVIDER=minio \
     MINIO_ENDPOINT="" \
@@ -40,4 +40,4 @@ ENV STORAGE_PROVIDER=minio \
 
 EXPOSE 3000
 
-ENTRYPOINT ["/app/mini-lambda"]
+ENTRYPOINT ["/app/byot"]

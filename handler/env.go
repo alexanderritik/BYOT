@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/alexanderritik/mini-lambda/model"
-	"github.com/alexanderritik/mini-lambda/repository"
-	"github.com/alexanderritik/mini-lambda/secrets"
+	"github.com/alexanderritik/byot/model"
+	"github.com/alexanderritik/byot/repository"
+	"github.com/alexanderritik/byot/secrets"
 	"github.com/jackc/pgx/v5"
 	"github.com/rs/zerolog/log"
 )

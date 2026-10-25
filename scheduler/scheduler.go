@@ -27,10 +27,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/alexanderritik/mini-lambda/model"
-	"github.com/alexanderritik/mini-lambda/queue"
-	"github.com/alexanderritik/mini-lambda/repository"
-	"github.com/alexanderritik/mini-lambda/schedule"
+	"github.com/alexanderritik/byot/model"
+	"github.com/alexanderritik/byot/queue"
+	"github.com/alexanderritik/byot/repository"
+	"github.com/alexanderritik/byot/schedule"
 	"github.com/rs/zerolog/log"
 )
 

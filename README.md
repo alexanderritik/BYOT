@@ -85,7 +85,7 @@ That starts BYOT (the published image `ghcr.io/alexanderritik/byot`), Postgres a
 Open http://localhost:3000/app for the dashboard, then upload one of the ready-made tests in [examples/](examples/) (a k6 API check, a Locust load test and a Playwright browser flow) to see a run end to end. The first run of each runtime pulls its image, so it takes longer. To pull them all up front:
 
 ```bash
-docker compose exec byot /app/mini-lambda pull-images
+docker compose exec byot /app/byot pull-images
 ```
 
 > **How tests run:** BYOT mounts the host's Docker socket and starts each test as a sibling container on the host (hardened as listed under Features, as user `nobody`). Access to the Docker socket is root-equivalent on that host, so run BYOT on a machine dedicated to it. Run workspaces live in `/tmp/byot-runs` on the host.
@@ -119,7 +119,7 @@ Docker Compose reads `.env` automatically. Pinning `BYOT_VERSION` means a restar
 
 ```bash
 docker compose up -d
-docker compose exec byot /app/mini-lambda pull-images   # optional, makes first runs fast
+docker compose exec byot /app/byot pull-images   # optional, makes first runs fast
 curl -s localhost:3000/health
 ```
 
@@ -154,7 +154,11 @@ Postgres and MinIO listen on `127.0.0.1` only; BYOT reaches them over the compos
 docker compose pull && docker compose up -d
 ```
 
-Migrations run on startup. Images are tagged `X.Y.Z`, `X.Y` and `X` (releases), `latest` (newest stable release), `edge` (every push to main) and `sha-<commit>`.
+Migrations run on startup.
+
+> **Upgrading from 0.1.0:** the default database name changed from `fnx` to `byot`. Add `POSTGRES_USER=fnx` and `POSTGRES_DB=fnx` to `.env` before upgrading, plus `POSTGRES_PASSWORD=fnx` if you never set your own password, so BYOT keeps using your existing database.
+
+Images are tagged `X.Y.Z`, `X.Y` and `X` (releases), `latest` (newest stable release), `edge` (every push to main) and `sha-<commit>`.
 
 ---
 

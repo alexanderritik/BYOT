@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alexanderritik/mini-lambda/model"
+	"github.com/alexanderritik/byot/model"
 )
 
 func fakeQueue(n int) func(context.Context) (*model.Job, error) {

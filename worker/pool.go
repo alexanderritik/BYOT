@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/alexanderritik/mini-lambda/model"
+	"github.com/alexanderritik/byot/model"
 	"github.com/rs/zerolog/log"
 )
 

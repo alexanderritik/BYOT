@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/alexanderritik/mini-lambda/repository"
-	"github.com/alexanderritik/mini-lambda/schedule"
+	"github.com/alexanderritik/byot/repository"
+	"github.com/alexanderritik/byot/schedule"
 )
 
 func (hl *Handler) enableSchedule(w http.ResponseWriter, r *http.Request, testID string) {

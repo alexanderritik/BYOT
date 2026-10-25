@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/alexanderritik/mini-lambda/model"
-	"github.com/alexanderritik/mini-lambda/repository"
+	"github.com/alexanderritik/byot/model"
+	"github.com/alexanderritik/byot/repository"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 )
