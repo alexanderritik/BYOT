@@ -1,0 +1,123 @@
+name: release
+
+# Two ways to cut a release, both ending in the same image + GitHub Release:
+#   1. Actions → release → Run workflow → enter a version (e.g. 1.2.0)
+#   2. git tag v1.2.0 && git push origin v1.2.0
+#
+# Images pushed to ghcr.io/<owner>/byot:
+#   1.2.0, 1.2, 1   always (major only from 1.0 on)
+#   latest          stable versions only, not pre-releases like 1.3.0-rc.1
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, e.g. 1.2.0 or 1.3.0-rc.1"
+        required: true
+
+permissions:
+  contents: write # create the tag and the GitHub Release
+  packages: write # push to GHCR
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve version
+        id: v
+        env:
+          INPUT: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+              echo "::error::Run releases from main (got $GITHUB_REF)"; exit 1
+            fi
+            version="${INPUT#v}"
+          else
+            version="${GITHUB_REF_NAME#v}"
+          fi
+          if ! echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::'$version' is not a semver version like 1.2.0 or 1.3.0-rc.1"; exit 1
+          fi
+          prerelease=false
+          case "$version" in *-*) prerelease=true ;; esac
+          major=false
+          case "$version" in 0.*) ;; *) [ "$prerelease" = false ] && major=true ;; esac
+          {
+            echo "version=$version"
+            echo "tag=v$version"
+            echo "prerelease=$prerelease"
+            echo "major=$major"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Tags pushed with GITHUB_TOKEN don't trigger other workflows, so this
+      # run does the build itself rather than relying on the tag push.
+      - name: Create tag
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          TAG: ${{ steps.v.outputs.tag }}
+        run: |
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "::error::Tag $TAG already exists"; exit 1
+          fi
+          git tag "$TAG"
+          git push origin "$TAG"
+
+      - name: Test
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go test ./...
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/byot
+          flavor: latest=false
+          tags: |
+            type=semver,pattern={{version}},value=${{ steps.v.outputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.v.outputs.tag }},enable=${{ steps.v.outputs.prerelease == 'false' }}
+            type=semver,pattern={{major}},value=${{ steps.v.outputs.tag }},enable=${{ steps.v.outputs.major == 'true' }}
+            type=raw,value=latest,enable=${{ steps.v.outputs.prerelease == 'false' }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.v.outputs.tag }}
+          VERSION: ${{ steps.v.outputs.version }}
+          PRERELEASE: ${{ steps.v.outputs.prerelease }}
+          IMAGE: ghcr.io/${{ github.repository_owner }}/byot
+        run: |
+          flags=""
+          [ "$PRERELEASE" = true ] && flags="--prerelease"
+          gh release create "$TAG" $flags --verify-tag --title "$TAG" --generate-notes \
+            --notes "$(printf '## Image\n\n```bash\ndocker pull %s:%s\n```\n\nOr pin it in docker-compose.yml: `image: %s:%s`\n' "$IMAGE" "$VERSION" "$IMAGE" "$VERSION")"

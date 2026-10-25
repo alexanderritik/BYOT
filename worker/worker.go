@@ -35,6 +35,22 @@ type Worker struct {
 	pollInterval   time.Duration
 }
 
+// workspaceRoot is where per-run workspaces are created (WORKSPACE_DIR,
+// default /tmp). Test containers bind-mount them through the docker daemon,
+// so when the server itself runs in a container this must be a directory
+// mounted at the same path on the host and in the container.
+func workspaceRoot() string {
+	dir := os.Getenv("WORKSPACE_DIR")
+	if dir == "" {
+		return "/tmp"
+	}
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		log.Warn().Err(err).Str("dir", dir).Msg("cannot create WORKSPACE_DIR, using /tmp")
+		return "/tmp"
+	}
+	return dir
+}
+
 func NewWorker(workerID string, q *queue.Queue, testRepo repository.TestRepository, testRunRepo repository.TestRunRepository, screenshotRepo repository.ScreenshotRepository, storage storage.Storage, envRepo repository.EnvRepository, box *secrets.Box, concurrency int) *Worker {
 	return &Worker{
 		workerID:       workerID,
@@ -150,7 +166,7 @@ func (w *Worker) executeJob(ctx context.Context, job *model.Job) error {
 		return err
 	}
 
-	workspace, err := os.MkdirTemp("/tmp", "run-"+test.UUID+"-*")
+	workspace, err := os.MkdirTemp(workspaceRoot(), "run-"+test.UUID+"-*")
 	if err != nil {
 		return err
 	}
@@ -197,6 +213,9 @@ func (w *Worker) executeJob(ctx context.Context, job *model.Job) error {
 	}
 	if err := runtime.StageSupportFiles(test.Runtime, workspace); err != nil {
 		return fmt.Errorf("stage %s support files: %w", test.Runtime, err)
+	}
+	if err := runtime.ChownWorkspace(workspace); err != nil {
+		return fmt.Errorf("chown workspace: %w", err)
 	}
 
 	command := test.Command

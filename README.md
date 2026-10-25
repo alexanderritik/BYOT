@@ -73,23 +73,47 @@ Datadog Synthetics and Checkly are mature hosted products, and Checkly in partic
 
 ## Quick Start
 
+**Prerequisites:** Docker with Compose. Nothing else.
+
+```bash
+curl -O https://raw.githubusercontent.com/alexanderritik/BYOT/main/docker-compose.yml
+docker compose up -d
+```
+
+That starts BYOT (the published image `ghcr.io/alexanderritik/byot`), Postgres and MinIO. Database migrations run on boot and the storage bucket is created automatically.
+
+Open http://localhost:3000/app for the dashboard, then upload one of the ready-made tests in [examples/](examples/) (a k6 API check, a Locust load test and a Playwright browser flow) to see a run end to end. The first run of each runtime pulls its image, so it takes longer. To pull them all up front:
+
+```bash
+docker compose exec byot /app/mini-lambda pull-images
+```
+
+> **How tests run:** BYOT mounts the host's Docker socket and starts each test as a sibling container on the host (hardened as listed under Features, as user `nobody`). Access to the Docker socket is root-equivalent on that host, so run BYOT on a machine dedicated to it. Run workspaces live in `/tmp/byot-runs` on the host.
+
+Before exposing it beyond localhost, change the MinIO and Postgres passwords in `docker-compose.yml`, set `SECRETS_KEY` (`openssl rand -base64 32`) and enable auth (see [Configuration](#configuration)). Images are tagged `latest` (newest stable release), `X.Y.Z` / `X.Y` / `X` (releases), `edge` (every push to main) and `sha-<commit>`. Pin a version in production.
+
+---
+
+## Development
+
 **Prerequisites:** Docker, Docker Compose and Go 1.26+
 
 ```bash
-# 1. Start Postgres (5432) and MinIO (9000, console 9001)
-docker compose up -d
+# 1. Start only Postgres (5432) and MinIO (9000, console 9001)
+docker compose up -d postgres minio
 
 # 2. Configure (the defaults work with docker compose)
 cp .env.example .env
 
-# 3. Pre-pull the runtime images (optional, avoids a slow first run)
-go run . pull-images
-
-# 4. Start the server on :3000 (database migrations run automatically)
+# 3. Start the server on :3000 (database migrations run automatically)
 go run .
 ```
 
-Open http://localhost:3000/app for the dashboard, then upload one of the ready-made tests in [examples/](examples/) (a k6 API check, a Locust load test and a Playwright browser flow) to see a run end to end.
+`docker compose up -d --build` builds the image from your checkout instead of pulling it.
+
+### Releasing
+
+Actions → **release** → Run workflow → enter a version (`1.2.0`, or `1.3.0-rc.1` for a pre-release). Or push a tag: `git tag v1.2.0 && git push origin v1.2.0`. Either way the workflow tests, tags, pushes the multi-arch image and publishes a GitHub Release with generated notes.
 
 ---
 
@@ -111,6 +135,7 @@ All settings come from environment variables or `.env`. See [.env.example](.env.
 | `MAX_DOCKER_MEMORY_MB` | `2048` | Upper bound for per-test memory |
 | `MAX_DOCKER_CPUS` | `4` | Upper bound for per-test CPUs |
 | `MAX_TIMEOUT_SECONDS` | `900` | Upper bound for per-test timeouts |
+| `WORKSPACE_DIR` | `/tmp` | Where run workspaces are created. When BYOT itself runs in a container, this must be bind-mounted at the same path on the host (the compose file uses `/tmp/byot-runs`) |
 | `AUTO_MIGRATE` | `true` | Apply database migrations on startup. Set `false` to run them yourself with the [`migrate`](https://github.com/golang-migrate/migrate) CLI |
 
 ---
