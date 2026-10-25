@@ -275,11 +275,29 @@ type UpdateTestConfigRequest struct {
 	Cron                 *string  `json:"cron"`
 	ScheduleEnabled      *bool    `json:"schedule_enabled"`
 	WebhookURL           *string  `json:"webhook_url"`
+	PagerDutyKey         *string  `json:"pagerduty_routing_key"`
 	FailureThreshold     *int     `json:"failure_threshold"`
 	AlertsEnabled        *bool    `json:"alerts_enabled"`
 	DockerMemoryMB       *int     `json:"docker_memory_mb"`
 	DockerCPUs           *float64 `json:"docker_cpus"`
 	DockerNetworkEnabled *bool    `json:"docker_network_enabled"`
+}
+
+// validatePagerDutyKey checks the shape of an Events API v2 integration key
+// (32 letters and digits). Empty means "no PagerDuty" and is valid.
+func validatePagerDutyKey(key string) error {
+	if key == "" {
+		return nil
+	}
+	if len(key) != 32 {
+		return fmt.Errorf("pagerduty_routing_key must be a 32-character Events API v2 integration key")
+	}
+	for _, c := range key {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9') {
+			return fmt.Errorf("pagerduty_routing_key must contain only letters and digits")
+		}
+	}
+	return nil
 }
 
 func (hl *Handler) updateTestConfig(w http.ResponseWriter, r *http.Request, testID string) {
@@ -323,6 +341,15 @@ func (hl *Handler) updateTestConfig(w http.ResponseWriter, r *http.Request, test
 	// Reads return a masked webhook URL; sending that mask back means "unchanged".
 	if req.WebhookURL != nil && *req.WebhookURL != model.MaskWebhook(test.WebhookURL) {
 		test.WebhookURL = strings.TrimSpace(*req.WebhookURL)
+	}
+	// Same for the PagerDuty key.
+	if req.PagerDutyKey != nil && *req.PagerDutyKey != model.MaskKey(test.PagerDutyKey) {
+		key := strings.TrimSpace(*req.PagerDutyKey)
+		if err := validatePagerDutyKey(key); err != nil {
+			jsonResponse(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		test.PagerDutyKey = key
 	}
 	if req.FailureThreshold != nil {
 		if *req.FailureThreshold <= 0 {
@@ -387,6 +414,7 @@ func (hl *Handler) updateTestConfig(w http.ResponseWriter, r *http.Request, test
 		ScheduleEnabled:      test.ScheduleEnabled,
 		NextRunAt:            nextRun,
 		WebhookURL:           test.WebhookURL,
+		PagerDutyKey:         test.PagerDutyKey,
 		FailureThreshold:     test.FailureThreshold,
 		AlertsEnabled:        test.AlertsEnabled,
 		DockerMemoryMB:       test.DockerMemoryMB,
@@ -469,6 +497,11 @@ func (hl *Handler) UploadBinary(h http.ResponseWriter, r *http.Request) {
 	command := r.FormValue("command")
 	cron := strings.TrimSpace(r.FormValue("cron"))
 	webhookURL := strings.TrimSpace(r.FormValue("webhook_url"))
+	pagerDutyKey := strings.TrimSpace(r.FormValue("pagerduty_routing_key"))
+	if err := validatePagerDutyKey(pagerDutyKey); err != nil {
+		jsonResponse(h, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
 	failureThreshold := 3
 	if ft := strings.TrimSpace(r.FormValue("failure_threshold")); ft != "" {
 		v, err := strconv.Atoi(ft)
@@ -596,6 +629,7 @@ func (hl *Handler) UploadBinary(h http.ResponseWriter, r *http.Request) {
 		ArtifactKey:          dst,
 		TimeoutSeconds:       timeout,
 		WebhookURL:           webhookURL,
+		PagerDutyKey:         pagerDutyKey,
 		FailureThreshold:     failureThreshold,
 		AlertsEnabled:        true,
 		DockerMemoryMB:       dockerMemoryMB,

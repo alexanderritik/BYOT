@@ -1,25 +1,32 @@
 # Full stack:        docker compose up -d          → http://localhost:3000/app
 # Build from source: docker compose up -d --build
 # Contributors:      docker compose up -d postgres minio, then `go run .`
+# Production:        put overrides in a .env file next to this one (see README)
 
 services:
 
   byot:
-    image: ghcr.io/alexanderritik/byot:latest
+    image: ghcr.io/alexanderritik/byot:${BYOT_VERSION:-latest}
     build: .
     ports:
-      - "3000:3000"
+      # Set BYOT_LISTEN=127.0.0.1:3000 when a reverse proxy runs on this host.
+      - "${BYOT_LISTEN:-3000}:3000"
     environment:
       - STORAGE_PROVIDER=minio
       - MINIO_ENDPOINT=minio:9000
       - MINIO_ACCESS_KEY=minioadmin
-      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
       - MINIO_BUCKET=byot
-      - DB_URL=postgres://fnx:fnx@postgres:5432/fnx?sslmode=disable
+      - DB_URL=postgres://fnx:${POSTGRES_PASSWORD:-fnx}@postgres:5432/fnx?sslmode=disable
       # Must match the bind mount below (same path on host and container).
       - WORKSPACE_DIR=/tmp/byot-runs
       - SECRETS_KEY=${SECRETS_KEY:-}
       - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-3}
+      # Sign-in for the dashboard and API; empty disables auth.
+      - SUPABASE_URL=${SUPABASE_URL:-}
+      - SUPABASE_PUBLISHABLE_KEY=${SUPABASE_PUBLISHABLE_KEY:-}
+      # PagerDuty EU accounts: https://events.eu.pagerduty.com/v2/enqueue
+      - PAGERDUTY_EVENTS_URL=${PAGERDUTY_EVENTS_URL:-}
     volumes:
       # Tests run as sibling containers on the host's docker daemon.
       - /var/run/docker.sock:/var/run/docker.sock
@@ -37,11 +44,12 @@ services:
     image: cgr.dev/chainguard/minio:latest
     command: server /data --console-address ":9001"
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      # Localhost only: BYOT reaches MinIO over the compose network.
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     environment:
       - MINIO_ROOT_USER=minioadmin
-      - MINIO_ROOT_PASSWORD=minioadmin
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin}
     volumes:
       - minio_data:/data
     healthcheck:
@@ -53,10 +61,11 @@ services:
   postgres:
     image: postgres:16-alpine
     ports:
-      - "5432:5432"
+      # Localhost only, for `go run .` during development.
+      - "127.0.0.1:5432:5432"
     environment:
       - POSTGRES_USER=fnx
-      - POSTGRES_PASSWORD=fnx
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-fnx}
       - POSTGRES_DB=fnx
     volumes:
       - postgres_data:/var/lib/postgresql/data

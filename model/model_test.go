@@ -34,3 +34,20 @@ func TestTestJSONMasksWebhook(t *testing.T) {
 		}
 	}
 }
+
+func TestTestJSONMasksPagerDutyKey(t *testing.T) {
+	const key = "R0UT1NGKEYsecretsecretsecret9z8y"
+	b, err := json.Marshal(Test{PagerDutyKey: key})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "secret") {
+		t.Errorf("routing key leaked: %s", b)
+	}
+	if !strings.Contains(string(b), `"pagerduty_routing_key":"…9z8y"`) {
+		t.Errorf("masked key missing: %s", b)
+	}
+	if MaskKey("") != "" {
+		t.Error("empty key should stay empty")
+	}
+}

@@ -19,7 +19,7 @@ BYOT is an open-source production monitoring platform. It runs the tests you alr
 - **Any test runtime:** `node`, `python`, `go`, `k6`, `locust`, `playwright` (zip bundle)
 - **Isolated execution:** every run gets a fresh, hardened container (`--cap-drop=ALL`, `no-new-privileges`, `--read-only`, tmpfs `/tmp`, non-root user)
 - **Cron scheduling:** per-test schedules, plus a global pause/resume switch
-- **Alerts:** Slack-compatible webhooks with a consecutive-failure threshold and recovery notices, so flaky tests don't page anyone
+- **Alerts:** PagerDuty (one incident per test, resolved automatically on recovery) and Slack-compatible webhooks, with a consecutive-failure threshold so flaky tests don't page anyone
 - **Per-test limits:** timeout, memory, CPU and network access, capped by server-wide maximums
 - **Env vars and secrets:** secrets encrypted at rest with AES-256-GCM, write-only through the API, and redacted from logs
 - **Logs and screenshots:** timestamped stdout/stderr per run; Playwright screenshots are collected automatically
@@ -90,7 +90,71 @@ docker compose exec byot /app/mini-lambda pull-images
 
 > **How tests run:** BYOT mounts the host's Docker socket and starts each test as a sibling container on the host (hardened as listed under Features, as user `nobody`). Access to the Docker socket is root-equivalent on that host, so run BYOT on a machine dedicated to it. Run workspaces live in `/tmp/byot-runs` on the host.
 
-Before exposing it beyond localhost, change the MinIO and Postgres passwords in `docker-compose.yml`, set `SECRETS_KEY` (`openssl rand -base64 32`) and enable auth (see [Configuration](#configuration)). Images are tagged `latest` (newest stable release), `X.Y.Z` / `X.Y` / `X` (releases), `edge` (every push to main) and `sha-<commit>`. Pin a version in production.
+That setup uses default passwords and no sign-in, which is fine on your laptop. For a server, see [Running in production](#running-in-production).
+
+---
+
+## Running in production
+
+About five minutes on any Linux host with Docker. Use a VM dedicated to BYOT (see the note above about the Docker socket).
+
+**1. Download the compose file and generate credentials**
+
+```bash
+mkdir byot && cd byot
+curl -O https://raw.githubusercontent.com/alexanderritik/BYOT/main/docker-compose.yml
+
+cat > .env <<EOF
+BYOT_VERSION=0.1.0
+POSTGRES_PASSWORD=$(openssl rand -hex 24)
+MINIO_ROOT_PASSWORD=$(openssl rand -hex 24)
+SECRETS_KEY=$(openssl rand -base64 32)
+EOF
+chmod 600 .env
+```
+
+Docker Compose reads `.env` automatically. Pinning `BYOT_VERSION` means a restart never pulls a surprise upgrade. Set the passwords **before the first start**: Postgres only applies its password when it creates the database volume.
+
+**2. Start it**
+
+```bash
+docker compose up -d
+docker compose exec byot /app/mini-lambda pull-images   # optional, makes first runs fast
+curl -s localhost:3000/health
+```
+
+Postgres and MinIO listen on `127.0.0.1` only; BYOT reaches them over the compose network.
+
+**3. Control who can reach it.** Anyone who can upload a test can run code on this host, so pick one:
+
+- **Private network (fastest):** keep port 3000 reachable only from your VPN, VPC or Tailscale network, and close it in the firewall everywhere else.
+- **Public URL:** turn on sign-in and put TLS in front. Create a [Supabase](https://supabase.com) project and add its URL and publishable key to `.env`:
+
+  ```bash
+  SUPABASE_URL=https://your-project-ref.supabase.co
+  SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+  BYOT_LISTEN=127.0.0.1:3000          # only the proxy can reach BYOT
+  ```
+
+  Then use any reverse proxy for HTTPS. With [Caddy](https://caddyserver.com) on the host, this `Caddyfile` gets a certificate automatically:
+
+  ```
+  byot.example.com {
+      reverse_proxy localhost:3000
+  }
+  ```
+
+  Run `docker compose up -d` again to apply the changes. Sign-in protects every write route. Read routes (test list, run history, logs) stay open, so use the private-network option if your logs are sensitive.
+
+**Back up** the `postgres_data` and `minio_data` volumes, and keep a copy of `SECRETS_KEY` somewhere safe: without it, stored secrets can't be decrypted.
+
+**Upgrade** by changing `BYOT_VERSION` in `.env`, then:
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+Migrations run on startup. Images are tagged `X.Y.Z`, `X.Y` and `X` (releases), `latest` (newest stable release), `edge` (every push to main) and `sha-<commit>`.
 
 ---
 
@@ -108,6 +172,8 @@ cp .env.example .env
 # 3. Start the server on :3000 (database migrations run automatically)
 go run .
 ```
+
+For hot reload use [air](https://github.com/air-verse/air) (`go install github.com/air-verse/air@latest`, then `air`), and run tests with `go test ./...`.
 
 `docker compose up -d --build` builds the image from your checkout instead of pulling it.
 
@@ -135,6 +201,7 @@ All settings come from environment variables or `.env`. See [.env.example](.env.
 | `MAX_DOCKER_MEMORY_MB` | `2048` | Upper bound for per-test memory |
 | `MAX_DOCKER_CPUS` | `4` | Upper bound for per-test CPUs |
 | `MAX_TIMEOUT_SECONDS` | `900` | Upper bound for per-test timeouts |
+| `PAGERDUTY_EVENTS_URL` | US endpoint | Set to `https://events.eu.pagerduty.com/v2/enqueue` for PagerDuty EU accounts |
 | `WORKSPACE_DIR` | `/tmp` | Where run workspaces are created. When BYOT itself runs in a container, this must be bind-mounted at the same path on the host (the compose file uses `/tmp/byot-runs`) |
 | `AUTO_MIGRATE` | `true` | Apply database migrations on startup. Set `false` to run them yourself with the [`migrate`](https://github.com/golang-migrate/migrate) CLI |
 
@@ -191,7 +258,7 @@ When auth is enabled, every non-GET route needs a Supabase bearer token, and `/t
 | `POST` | `/uploadBinary` | Upload a test (multipart, see below) |
 | `GET` | `/tests` | List tests with their last run |
 | `GET` / `DELETE` | `/tests/{id}` | Get or delete a test |
-| `PATCH` | `/tests/{id}/config` | Update command, timeout, cron, webhook, threshold, limits |
+| `PATCH` | `/tests/{id}/config` | Update command, timeout, cron, webhook, PagerDuty key, threshold, limits |
 | `POST` | `/tests/{id}/schedule/start` · `/schedule/stop` | Enable or disable the schedule |
 | `GET` | `/tests/{id}/runs` | Run history |
 | `GET` / `PUT` | `/tests/{id}/env` | List or set env vars (`{name, value, is_secret}`) |
@@ -214,6 +281,7 @@ When auth is enabled, every non-GET route needs a Supabase bearer token, and `/t
 | `timeout` | no | Seconds (default 30, max `MAX_TIMEOUT_SECONDS`) |
 | `cron` | no | Cron expression. Setting it enables the schedule |
 | `webhook_url` | no | Slack-compatible webhook for alerts. API reads return it masked (`https://hooks.slack.com/…a1b2`) |
+| `pagerduty_routing_key` | no | PagerDuty Events API v2 integration key (32 characters). Opens an incident at the failure threshold and resolves it when the test passes. API reads return it masked (`…a1b2`) |
 | `failure_threshold` | no | Consecutive failures before an alert fires |
 | `docker_memory_mb`, `docker_cpus`, `docker_network_enabled` | no | Per-test resource limits |
 
@@ -250,7 +318,7 @@ HTTP server (:3000) ── Supabase auth (write routes)
      │                          │
      │                          ├─► logs + screenshots ──► Storage
      │                          ├─► run result ──► Postgres
-     │                          └─► webhook alert / recovery
+     │                          └─► PagerDuty / webhook alert, recovery
      │
      └─ Retention sweeper (hourly)
 ```
@@ -268,14 +336,6 @@ BYOT runs code you upload, so it is built to contain that code, not to run code 
 - **Auth** (Supabase) protects every write route. Read routes (test list, run history, logs, screenshots) stay open, so keep the server on a private network or behind a proxy if your logs are sensitive.
 
 Found a vulnerability? Please open a private [security advisory](https://github.com/alexanderritik/BYOT/security/advisories/new) instead of a public issue.
-
-## Development
-
-```bash
-docker compose up -d   # infra
-air                    # hot reload (go install github.com/air-verse/air@latest)
-go test ./...
-```
 
 ## License
 

@@ -301,16 +301,17 @@ func (w *Worker) executeJob(ctx context.Context, job *model.Job) error {
 			FailureThreshold:    alertInfo.Threshold,
 			RunID:               testRun.UUID,
 		}
+		targets := alert.Targets{WebhookURL: alertInfo.WebhookURL, PagerDutyKey: alertInfo.PagerDutyKey}
 		if alertInfo.SendFailure {
-			if err := alert.SendFailure(ctx, alertInfo.WebhookURL, payload); err != nil {
-				log.Error().Err(err).Str("test_id", test.UUID).Msg("failure webhook failed")
+			if err := alert.NotifyFailure(ctx, targets, payload); err != nil {
+				log.Error().Err(err).Str("test_id", test.UUID).Msg("failure alert failed")
 			} else {
 				log.Info().Str("test_id", test.UUID).Int("consecutive", alertInfo.Consecutive).Msg("failure alert sent")
 			}
 		}
 		if alertInfo.SendRecovery {
-			if err := alert.SendRecovery(ctx, alertInfo.WebhookURL, payload); err != nil {
-				log.Error().Err(err).Str("test_id", test.UUID).Msg("recovery webhook failed")
+			if err := alert.NotifyRecovery(ctx, targets, payload); err != nil {
+				log.Error().Err(err).Str("test_id", test.UUID).Msg("recovery alert failed")
 			} else {
 				log.Info().Str("test_id", test.UUID).Msg("recovery alert sent")
 			}

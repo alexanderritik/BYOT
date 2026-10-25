@@ -17,6 +17,7 @@ type TestConfigUpdate struct {
 	ScheduleEnabled      bool
 	NextRunAt            *time.Time
 	WebhookURL           string
+	PagerDutyKey         string
 	FailureThreshold     int
 	AlertsEnabled        bool
 	DockerMemoryMB       *int
@@ -48,8 +49,8 @@ func (r *postgresTestRepository) Create(ctx context.Context, test *model.Test) e
 		`INSERT INTO tests (
 			uuid, name, runtime, original_filename, command, artifact_key, timeout_seconds,
 			schedule_cron, schedule_enabled, next_run_at, webhook_url, failure_threshold, alerts_enabled,
-			docker_memory_mb, docker_cpus, docker_network_enabled
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+			docker_memory_mb, docker_cpus, docker_network_enabled, pagerduty_routing_key
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
 		test.UUID,
 		test.Name,
 		test.Runtime,
@@ -66,6 +67,7 @@ func (r *postgresTestRepository) Create(ctx context.Context, test *model.Test) e
 		test.DockerMemoryMB,
 		test.DockerCPUs,
 		test.DockerNetworkEnabled,
+		nullIfEmpty(test.PagerDutyKey),
 	)
 	return err
 }
@@ -90,7 +92,7 @@ func (r *postgresTestRepository) GetByID(ctx context.Context, uuid string) (*mod
 		`SELECT uuid::text, COALESCE(name, ''), runtime, original_filename,
 		        COALESCE(command, ''), COALESCE(artifact_key, ''), created_at, timeout_seconds,
 		        COALESCE(schedule_cron, ''), schedule_enabled, next_run_at,
-		        COALESCE(webhook_url, ''), failure_threshold, consecutive_failures, alert_active, alerts_enabled,
+		        COALESCE(webhook_url, ''), COALESCE(pagerduty_routing_key, ''), failure_threshold, consecutive_failures, alert_active, alerts_enabled,
 		        docker_memory_mb, docker_cpus, docker_network_enabled
 		 FROM tests WHERE uuid = $1`,
 		uuid,
@@ -107,6 +109,7 @@ func (r *postgresTestRepository) GetByID(ctx context.Context, uuid string) (*mod
 		&test.ScheduleEnabled,
 		&test.NextRunAt,
 		&test.WebhookURL,
+		&test.PagerDutyKey,
 		&test.FailureThreshold,
 		&test.ConsecutiveFailures,
 		&test.AlertActive,
@@ -126,7 +129,7 @@ func (r *postgresTestRepository) ListWithLastRun(ctx context.Context) ([]model.T
 		`SELECT t.uuid::text, COALESCE(t.name, ''), t.runtime, t.original_filename,
 		        COALESCE(t.command, ''), COALESCE(t.artifact_key, ''), t.created_at, t.timeout_seconds,
 		        COALESCE(t.schedule_cron, ''), t.schedule_enabled, t.next_run_at,
-		        COALESCE(t.webhook_url, ''), t.failure_threshold, t.consecutive_failures, t.alert_active, t.alerts_enabled,
+		        COALESCE(t.webhook_url, ''), COALESCE(t.pagerduty_routing_key, ''), t.failure_threshold, t.consecutive_failures, t.alert_active, t.alerts_enabled,
 		        t.docker_memory_mb, t.docker_cpus, t.docker_network_enabled,
 		        lr.status, lr.started_at, lr.duration_ms,
 		        EXISTS (
@@ -168,6 +171,7 @@ func (r *postgresTestRepository) ListWithLastRun(ctx context.Context) ([]model.T
 			&test.ScheduleEnabled,
 			&test.NextRunAt,
 			&test.WebhookURL,
+			&test.PagerDutyKey,
 			&test.FailureThreshold,
 			&test.ConsecutiveFailures,
 			&test.AlertActive,
@@ -208,8 +212,9 @@ func (r *postgresTestRepository) UpdateConfig(ctx context.Context, testID string
 			alerts_enabled = $8,
 			docker_memory_mb = $9,
 			docker_cpus = $10,
-			docker_network_enabled = $11
-		 WHERE uuid = $12`,
+			docker_network_enabled = $11,
+			pagerduty_routing_key = $12
+		 WHERE uuid = $13`,
 		cfg.Command,
 		cfg.TimeoutSeconds,
 		nullIfEmpty(cfg.ScheduleCron),
@@ -221,6 +226,7 @@ func (r *postgresTestRepository) UpdateConfig(ctx context.Context, testID string
 		cfg.DockerMemoryMB,
 		cfg.DockerCPUs,
 		cfg.DockerNetworkEnabled,
+		nullIfEmpty(cfg.PagerDutyKey),
 		testID,
 	)
 	return err
@@ -284,29 +290,31 @@ func (r *postgresTestRepository) RecordRunOutcome(ctx context.Context, testID st
 	}
 	defer tx.Rollback(ctx)
 
-	var name, webhook string
+	var name string
+	var targets alert.Targets
 	var threshold, consecutive int
 	var alertActive, alertsEnabled bool
 	err = tx.QueryRow(ctx,
-		`SELECT COALESCE(name, ''), COALESCE(webhook_url, ''), failure_threshold,
-		        consecutive_failures, alert_active, alerts_enabled
+		`SELECT COALESCE(name, ''), COALESCE(webhook_url, ''), COALESCE(pagerduty_routing_key, ''),
+		        failure_threshold, consecutive_failures, alert_active, alerts_enabled
 		 FROM tests WHERE uuid = $1 FOR UPDATE`,
 		testID,
-	).Scan(&name, &webhook, &threshold, &consecutive, &alertActive, &alertsEnabled)
+	).Scan(&name, &targets.WebhookURL, &targets.PagerDutyKey, &threshold, &consecutive, &alertActive, &alertsEnabled)
 	if err != nil {
 		return nil, err
 	}
 
 	out := &model.RunOutcomeAlert{
-		WebhookURL: webhook,
-		TestName:   name,
-		Threshold:  threshold,
+		WebhookURL:   targets.WebhookURL,
+		PagerDutyKey: targets.PagerDutyKey,
+		TestName:     name,
+		Threshold:    threshold,
 	}
 
 	threshold = normalizeFailureThreshold(threshold)
 
 	if passed {
-		if alertActive && webhook != "" && alertsEnabled {
+		if alertActive && targets.Any() && alertsEnabled {
 			out.SendRecovery = true
 		}
 		consecutive = 0
@@ -315,7 +323,7 @@ func (r *postgresTestRepository) RecordRunOutcome(ctx context.Context, testID st
 		consecutive++
 		out.Consecutive = consecutive
 		alertActive = consecutive >= threshold
-		if webhook != "" && alertsEnabled && alert.FailureAlertDue(consecutive, threshold) {
+		if targets.Any() && alertsEnabled && alert.FailureAlertDue(consecutive, threshold) {
 			out.SendFailure = true
 		}
 	}

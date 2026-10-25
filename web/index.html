@@ -116,6 +116,19 @@ hr.div { border: none; border-top: 1px solid var(--border); margin: 0 2.5rem; }
 .no { color: var(--muted2); }
 .par { font-size: 0.72rem; color: var(--muted); }
 .cmp-table tr:last-child td { border-bottom: none; }
+.cmp-wrap { overflow-x: auto; }
+
+.gs-term { margin: 2.5rem 0 0; max-width: 760px; }
+.gs-term .term-body { overflow-x: auto; white-space: nowrap; }
+.gs-prod { margin-top: 2rem; max-width: 760px; color: var(--muted); font-size: 0.85rem; line-height: 1.75; font-weight: 300; }
+.gs-prod-t { color: var(--white); font-weight: 700; font-size: 0.9rem; margin-bottom: 0.5rem; }
+.gs-prod ol { padding-left: 1.25rem; }
+.gs-prod code { font-family: monospace; color: var(--accent); font-size: 0.8rem; }
+.gs-prod a { color: var(--accent); }
+@media (max-width: 640px) {
+  .cmp-table th, .cmp-table td { padding: 0.6rem 0.5rem; }
+  .cmp-table td { font-size: 0.78rem; }
+}
 
 .price-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 1.25rem; margin-top: 3rem; }
 .pc { border: 1px solid var(--border); border-radius: 8px; padding: 1.75rem; position: relative; }
@@ -158,6 +171,7 @@ footer { border-top: 1px solid var(--border); padding: 2.5rem; display: flex; al
   <div class="logo">BYO<em>T</em></div>
   <ul class="nav-links">
     <li><a href="#how-it-works">How it works</a></li>
+    <li><a href="#get-started">Get started</a></li>
     <li><a href="#features">Features</a></li>
     <li><a href="https://github.com/alexanderritik/BYOT#readme">Docs</a></li>
     <li><a href="https://github.com/alexanderritik/BYOT">GitHub</a></li>
@@ -168,7 +182,7 @@ footer { border-top: 1px solid var(--border); padding: 2.5rem; display: flex; al
 <section class="hero">
   <div class="pill"><div class="pill-dot"></div>open source · self-hostable · active-development</div>
   <h1>Your tests.<br><span class="ghost">Running in</span> <span class="green">production.</span></h1>
-  <p class="hero-p">Upload your existing Playwright, k6, Node, Python or Go test. BYOT runs it on a schedule, isolated in Docker, and sends a webhook (Slack-compatible) when something actually breaks.</p>
+  <p class="hero-p">Upload your existing Playwright, k6, Node, Python or Go test. BYOT runs it on a schedule, isolated in Docker, and pages PagerDuty or Slack when something actually breaks.</p>
   <div class="hero-btns">
     <a href="/app" class="btn-g">Open Playground →</a>
     <a href="https://github.com/alexanderritik/BYOT" class="btn-o">View on GitHub</a>
@@ -238,8 +252,8 @@ footer { border-top: 1px solid var(--border); padding: 2.5rem; display: flex; al
     </div>
     <div class="feat">
       <div class="feat-icon fi-b">⌘</div>
-      <div class="feat-t">Webhook alerts</div>
-      <div class="feat-d">Set a webhook URL per test. Messages are sent in Slack's incoming-webhook format, so Slack works out of the box. You get a failure alert and a recovery alert.</div>
+      <div class="feat-t">PagerDuty and Slack alerts</div>
+      <div class="feat-d">Add a PagerDuty integration key and BYOT opens one incident per test, then resolves it when the test passes again. Or set a Slack-compatible webhook URL for a failure message and a recovery message. Use either or both.</div>
     </div>
     <div class="feat">
       <div class="feat-icon fi-g">⚿</div>
@@ -288,7 +302,7 @@ footer { border-top: 1px solid var(--border); padding: 2.5rem; display: flex; al
     <div class="step">
       <div class="step-n">02</div>
       <div class="step-t">Configure</div>
-      <div class="step-d">Set schedule, timeout, environment variables and secrets, and your webhook. Takes 2 minutes.</div>
+      <div class="step-d">Set schedule, timeout, environment variables and secrets, and PagerDuty or Slack. Takes 2 minutes.</div>
     </div>
     <div class="step">
       <div class="step-n">03</div>
@@ -305,10 +319,43 @@ footer { border-top: 1px solid var(--border); padding: 2.5rem; display: flex; al
 
 <hr class="div">
 
+<section class="sec" id="get-started">
+  <div class="sec-label">get started</div>
+  <div class="sec-h">Running in 5 minutes.</div>
+  <p class="sec-p">All you need is Docker. The database, storage and migrations set themselves up on first start.</p>
+
+  <div class="term gs-term">
+    <div class="term-bar">
+      <div class="td td1"></div><div class="td td2"></div><div class="td td3"></div>
+      <span class="term-title">try it locally</span>
+    </div>
+    <div class="term-body">
+      <div class="tc"># 1. Download the compose file</div>
+      <div class="tp"><em>$</em> curl -O https://raw.githubusercontent.com/alexanderritik/BYOT/main/docker-compose.yml</div>
+      <div class="tc"># 2. Start BYOT, Postgres and MinIO</div>
+      <div class="tp"><em>$</em> docker compose up -d</div>
+      <div class="ts">✓ Open http://localhost:3000/app and upload a test</div>
+    </div>
+  </div>
+
+  <div class="gs-prod">
+    <div class="gs-prod-t">Going to production?</div>
+    <ol>
+      <li>Pin a version and generate passwords and a secrets key in a <code>.env</code> file.</li>
+      <li>Run <code>docker compose up -d</code> on a server dedicated to BYOT.</li>
+      <li>Keep it on a private network, or turn on sign-in and put HTTPS in front.</li>
+    </ol>
+    <a href="https://github.com/alexanderritik/BYOT#running-in-production">Full production guide →</a>
+  </div>
+</section>
+
+<hr class="div">
+
 <section class="sec">
   <div class="sec-label">comparison</div>
-  <div class="sec-h">Why not Datadog?</div>
-  <p class="sec-p">Because you shouldn't have to rewrite your tests in someone else's DSL.</p>
+  <div class="sec-h">Why not Datadog or Checkly?</div>
+  <p class="sec-p">They're mature hosted products, and Checkly runs Playwright tests well. BYOT is the same idea, fully open source, on your own servers, across more test runtimes.</p>
+  <div class="cmp-wrap">
   <table class="cmp-table">
     <thead>
       <tr>
@@ -320,43 +367,38 @@ footer { border-top: 1px solid var(--border); padding: 2.5rem; display: flex; al
     </thead>
     <tbody>
       <tr>
-        <td>Use existing tests</td>
+        <td>Open source (MIT)</td>
         <td class="byot-col"><span class="yes">✓</span></td>
         <td><span class="no">✗</span></td>
-        <td><span class="no">✗</span></td>
+        <td><span class="par">CLI only</span></td>
       </tr>
       <tr>
-        <td>Self-hostable</td>
+        <td>Runs entirely on your infrastructure</td>
         <td class="byot-col"><span class="yes">✓</span></td>
-        <td><span class="no">✗</span></td>
-        <td><span class="no">✗</span></td>
+        <td><span class="par">private locations, hosted control plane</span></td>
+        <td><span class="par">private locations, hosted control plane</span></td>
       </tr>
       <tr>
-        <td>Open source</td>
-        <td class="byot-col"><span class="yes">✓</span></td>
-        <td><span class="no">✗</span></td>
-        <td><span class="no">✗</span></td>
+        <td>Runtimes</td>
+        <td class="byot-col"><span class="par">Playwright, k6, Locust, Node, Python, Go binaries</span></td>
+        <td><span class="par">Datadog browser &amp; API tests</span></td>
+        <td><span class="par">Playwright, API checks</span></td>
       </tr>
       <tr>
-        <td>Flaky test detection</td>
-        <td class="byot-col"><span class="yes">✓</span></td>
-        <td><span class="par">paid tier</span></td>
-        <td><span class="par">limited</span></td>
+        <td>Pricing</td>
+        <td class="byot-col"><span class="yes">free</span> <span class="par">your hardware</span></td>
+        <td><span class="par">per test run</span></td>
+        <td><span class="par">per check run</span></td>
       </tr>
       <tr>
-        <td>Custom runtimes</td>
-        <td class="byot-col"><span class="yes">✓</span></td>
-        <td><span class="no">✗</span></td>
-        <td><span class="par">limited</span></td>
-      </tr>
-      <tr>
-        <td>Free tier</td>
-        <td class="byot-col"><span class="yes">unlimited</span></td>
-        <td><span class="par">5 tests</span></td>
-        <td><span class="par">3 tests</span></td>
+        <td>Managed service, global locations, SLAs</td>
+        <td class="byot-col"><span class="no">✗</span></td>
+        <td><span class="yes">✓</span></td>
+        <td><span class="yes">✓</span></td>
       </tr>
     </tbody>
   </table>
+  </div>
 </section>
 
 <hr class="div">
@@ -389,7 +431,7 @@ footer { border-top: 1px solid var(--border); padding: 2.5rem; display: flex; al
 
 <section class="cta-sec">
   <h2>Stop finding out<br>from your customers.</h2>
-  <p>Deploy BYOT in 5 minutes. Your existing tests start monitoring production today.</p>
+  <p><a href="#get-started" style="color:inherit">Deploy BYOT in 5 minutes.</a> Your existing tests start monitoring production today.</p>
   <div class="hero-btns">
     <a href="/app" class="btn-g">Open Playground→</a>
     <a href="https://github.com/alexanderritik/BYOT" class="btn-o">★ Star on GitHub</a>

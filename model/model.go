@@ -18,6 +18,7 @@ type Test struct {
 	ScheduleEnabled      bool       `db:"schedule_enabled" json:"schedule_enabled"`
 	NextRunAt            *time.Time `db:"next_run_at" json:"next_run_at"`
 	WebhookURL           string     `db:"webhook_url" json:"webhook_url"`
+	PagerDutyKey         string     `db:"pagerduty_routing_key" json:"pagerduty_routing_key"`
 	FailureThreshold     int        `db:"failure_threshold" json:"failure_threshold"`
 	ConsecutiveFailures  int        `db:"consecutive_failures" json:"consecutive_failures"`
 	AlertActive          bool       `db:"alert_active" json:"alert_active"`
@@ -28,13 +29,25 @@ type Test struct {
 	DockerNetworkEnabled *bool      `db:"docker_network_enabled" json:"docker_network_enabled"`
 }
 
-// MarshalJSON masks the webhook URL: a Slack webhook URL is a credential, and
-// test reads are not behind auth.
+// MarshalJSON masks the webhook URL and PagerDuty routing key: both are
+// credentials, and test reads are not behind auth.
 func (t Test) MarshalJSON() ([]byte, error) {
 	type plain Test
 	p := plain(t)
 	p.WebhookURL = MaskWebhook(t.WebhookURL)
+	p.PagerDutyKey = MaskKey(t.PagerDutyKey)
 	return json.Marshal(p)
+}
+
+// MaskKey keeps the last 4 characters of a key, e.g. "…a1b2". Empty stays empty.
+func MaskKey(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	if len(raw) <= 4 {
+		return "…"
+	}
+	return "…" + raw[len(raw)-4:]
 }
 
 // MaskWebhook keeps the scheme, host and last 4 characters of a webhook URL,
@@ -54,11 +67,12 @@ func MaskWebhook(raw string) string {
 	return u.Scheme + "://" + u.Host + "/…" + tail
 }
 
-// RunOutcomeAlert describes webhook notifications to send after a run completes.
+// RunOutcomeAlert describes alerts to send after a run completes.
 type RunOutcomeAlert struct {
 	SendFailure  bool
 	SendRecovery bool
 	WebhookURL   string
+	PagerDutyKey string
 	TestName     string
 	Consecutive  int
 	Threshold    int
