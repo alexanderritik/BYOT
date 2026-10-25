@@ -796,7 +796,7 @@ function scheduleLabel(test){
 
 function alertLabel(test){
 
-  if (!test.webhook_url) return '—';
+  if (!test.webhook_url && !test.pagerduty_routing_key) return '—';
 
   if (test.alerts_enabled === false) return 'paused';
 
@@ -806,7 +806,7 @@ function alertLabel(test){
 
   if (test.consecutive_failures > 0) return `${test.consecutive_failures} consecutive`;
 
-  return 'webhook ✓';
+  return [test.webhook_url && 'webhook', test.pagerduty_routing_key && 'PagerDuty'].filter(Boolean).join(' + ') + ' ✓';
 
 }
 
@@ -814,7 +814,7 @@ function alertLabel(test){
 
 function alertsConfiguredCount(){
 
-  return testList.filter(x=>x.test.webhook_url).length;
+  return testList.filter(x=>x.test.webhook_url || x.test.pagerduty_routing_key).length;
 
 }
 
@@ -1178,7 +1178,7 @@ async function renderDashboard(){
 
       <div class="stat bad"><div class="stat-n">${failing}</div><div class="stat-l">failing</div></div>
 
-      <div class="stat warn"><div class="stat-n">${alertsConfiguredCount()}</div><div class="stat-l">webhooks configured</div></div>
+      <div class="stat warn"><div class="stat-n">${alertsConfiguredCount()}</div><div class="stat-l">alerts configured</div></div>
 
     </div>
 
@@ -1242,7 +1242,7 @@ async function renderTestDetail(id){
 
   const alertState = !alertsOn
 
-    ? 'Webhooks paused (failure streak still tracked)'
+    ? 'Alerts paused (failure streak still tracked)'
 
     : t.consecutive_failures === 0
 
@@ -1250,9 +1250,9 @@ async function renderTestDetail(id){
 
       : t.consecutive_failures >= th
 
-        ? `${t.consecutive_failures} consecutive · next webhook at ${nextFire} failures`
+        ? `${t.consecutive_failures} consecutive · next alert at ${nextFire} failures`
 
-        : `${t.consecutive_failures}/${th} toward first webhook`;
+        : `${t.consecutive_failures}/${th} toward first alert`;
 
 
 
@@ -1384,13 +1384,23 @@ async function renderTestDetail(id){
 
         </div>
 
+        <div class="field full">
+
+          <label for="pd-key">PagerDuty integration key</label>
+
+          <input id="pd-key" type="text" autocomplete="off" spellcheck="false" placeholder="32-character Events API v2 key" value="${esc(t.pagerduty_routing_key||'')}">
+
+          <span class="hint">Opens one incident per test and resolves it when the test passes again. Leave empty to turn off.</span>
+
+        </div>
+
         <div class="field">
 
           <label for="fail-th">Consecutive failures before alert</label>
 
           <input id="fail-th" type="number" min="1" value="${th}">
 
-          <span class="hint">Webhook at ${th}, ${th*2}, ${th*3}… consecutive failures (recovery on pass).</span>
+          <span class="hint">Alerts at ${th}, ${th*2}, ${th*3}… consecutive failures (recovery on pass).</span>
 
         </div>
 
@@ -1400,7 +1410,7 @@ async function renderTestDetail(id){
 
             <input type="checkbox" id="alerts-enabled" ${alertsOn ? 'checked' : ''} style="width:auto">
 
-            Send webhook alerts
+            Send alerts
 
           </label>
 
@@ -1414,7 +1424,7 @@ async function renderTestDetail(id){
 
         <button type="submit" class="btn btn-accent">Save alert settings</button>
 
-        <button type="button" class="btn ${alertsOn ? 'btn-ghost' : 'btn-accent'}" onclick="toggleAlertsPause('${id}', ${alertsOn})">${alertsOn ? 'Pause webhooks now' : 'Resume webhooks'}</button>
+        <button type="button" class="btn ${alertsOn ? 'btn-ghost' : 'btn-accent'}" onclick="toggleAlertsPause('${id}', ${alertsOn})">${alertsOn ? 'Pause alerts now' : 'Resume alerts'}</button>
 
       </div>
 
@@ -1783,6 +1793,14 @@ function renderUpload(){
 
         </div>
 
+        <div class="field full">
+
+          <label for="pd-key-upload">PagerDuty integration key (optional)</label>
+
+          <input id="pd-key-upload" type="text" autocomplete="off" spellcheck="false" placeholder="32-character Events API v2 key">
+
+        </div>
+
         <div class="field">
 
           <label for="fail-th-upload">Failures before alert</label>
@@ -1860,6 +1878,10 @@ async function submitUpload(e){
   const webhook = document.getElementById('webhook').value.trim();
 
   if (webhook) fd.append('webhook_url', webhook);
+
+  const pdKey = document.getElementById('pd-key-upload').value.trim();
+
+  if (pdKey) fd.append('pagerduty_routing_key', pdKey);
 
   fd.append('failure_threshold', document.getElementById('fail-th-upload').value);
 
@@ -1943,6 +1965,8 @@ async function saveAlerts(e, testId){
 
   const webhook = document.getElementById('webhook-url').value.trim();
 
+  const pdKey = document.getElementById('pd-key').value.trim();
+
   const th = parseInt(document.getElementById('fail-th').value, 10);
 
   const alertsEnabled = document.getElementById('alerts-enabled').checked;
@@ -1960,6 +1984,8 @@ async function saveAlerts(e, testId){
       body: JSON.stringify({
 
         webhook_url: webhook,
+
+        pagerduty_routing_key: pdKey,
 
         failure_threshold: th,
 
@@ -1997,7 +2023,7 @@ async function toggleAlertsPause(testId, currentlyEnabled){
 
     });
 
-    toast(currentlyEnabled ? 'Webhook alerts paused' : 'Webhook alerts resumed');
+    toast(currentlyEnabled ? 'Alerts paused' : 'Alerts resumed');
 
     await renderTestDetail(testId);
 
