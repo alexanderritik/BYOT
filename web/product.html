@@ -1228,7 +1228,6 @@ async function renderTestDetail(id){
 
 
 
-  const cmd = t.command ? esc(t.command) : '<span class="tid">runtime default</span>';
 
   const th = t.failure_threshold || 3;
 
@@ -1280,25 +1279,53 @@ async function renderTestDetail(id){
 
         <div><span class="kv-k">Test ID</span><span class="kv-v">${t.uuid}</span></div>
 
-        <div><span class="kv-k">Schedule</span><span class="kv-v">${esc(scheduleLabel(t))}</span></div>
-
-        <div><span class="kv-k">Cron enabled</span><span class="kv-v">${t.schedule_enabled ? 'yes' : 'no'}</span></div>
-
-        <div><span class="kv-k">Command</span><span class="kv-v">${cmd}</span></div>
-
-        <div><span class="kv-k">Timeout</span><span class="kv-v">${t.timeout_seconds}s</span></div>
-
         <div><span class="kv-k">Alert state</span><span class="kv-v">${esc(alertState)}</span></div>
-
-        <div><span class="kv-k">Docker Memory</span><span class="kv-v">${t.docker_memory_mb ? t.docker_memory_mb + ' MB' : 'Default'}</span></div>
-
-        <div><span class="kv-k">Docker CPUs</span><span class="kv-v">${t.docker_cpus !== null && t.docker_cpus !== undefined ? t.docker_cpus : 'Default'}</span></div>
-
-        <div><span class="kv-k">Docker Network</span><span class="kv-v">${t.docker_network_enabled !== null && t.docker_network_enabled !== undefined ? (t.docker_network_enabled ? 'Enabled' : 'Disabled') : 'Default'}</span></div>
 
       </div>
 
     </div>
+
+    <div class="section-title">Schedule</div>
+
+    <form class="panel" style="padding:1.25rem 1.5rem" onsubmit="saveSchedule(event,'${id}')">
+
+      <div class="form-grid">
+
+        <div class="field">
+
+          <label for="cron-edit">Cron expression</label>
+
+          <input id="cron-edit" type="text" spellcheck="false" placeholder="e.g. */15 * * * *" value="${esc(t.schedule_cron||'')}">
+
+          <span class="hint">5 fields, UTC: minute hour day month weekday. Leave empty for manual runs only.</span>
+
+        </div>
+
+        <div class="field">
+
+          <label for="schedule-enabled-edit">Status</label>
+
+          <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-weight:500;font-size:.85rem;min-height:2.5rem">
+
+            <input type="checkbox" id="schedule-enabled-edit" ${t.schedule_enabled ? 'checked' : ''} style="width:auto;margin:0">
+
+            Run on schedule
+
+          </label>
+
+          <span class="hint">${formatNextRun(t) ? 'Next run ' + formatNextRun(t) + '. ' : ''}Unchecked keeps the cron saved but paused.</span>
+
+        </div>
+
+      </div>
+
+      <div style="margin-top:1rem;display:flex;gap:.6rem">
+
+        <button type="submit" class="btn btn-accent">Save schedule</button>
+
+      </div>
+
+    </form>
 
     <div class="section-title">Environment</div>
 
@@ -1904,6 +1931,42 @@ async function submitUpload(e){
     toast(esc(err.message));
 
     btn.disabled = false;
+
+  }
+
+}
+
+
+
+async function saveSchedule(e, testId){
+
+  e.preventDefault();
+
+  const cron = document.getElementById('cron-edit').value.trim();
+
+  const enabled = document.getElementById('schedule-enabled-edit').checked;
+
+  if (enabled && !cron){ toast('Enter a cron expression to run on a schedule'); return; }
+
+  try {
+
+    await apiJson('/tests/' + testId + '/config', {
+
+      method: 'PATCH',
+
+      headers: { 'Content-Type': 'application/json' },
+
+      body: JSON.stringify({ cron, schedule_enabled: enabled }),
+
+    });
+
+    toast('Schedule saved');
+
+    await renderTestDetail(testId);
+
+  } catch (err) {
+
+    toast(esc(err.message));
 
   }
 

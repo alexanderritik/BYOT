@@ -11,9 +11,6 @@ BYOT is an open-source production monitoring platform. It runs the tests you alr
 <br>
 <img src="https://raw.githubusercontent.com/alexanderritik/BYOT/main/docs/demo.webp" width="100%" alt="BYOT demo: upload a test, schedule it, get alerted after repeated failures and notified on recovery" />
 
-▶️ [Watch the full-quality launch video](docs/launch.mp4) (30s)
-
----
 
 ## Features
 

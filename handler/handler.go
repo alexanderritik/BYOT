@@ -333,7 +333,7 @@ func (hl *Handler) updateTestConfig(w http.ResponseWriter, r *http.Request, test
 		test.TimeoutSeconds = *req.TimeoutSeconds
 	}
 	if req.Cron != nil {
-		test.ScheduleCron = *req.Cron
+		test.ScheduleCron = strings.TrimSpace(*req.Cron)
 	}
 	if req.ScheduleEnabled != nil {
 		test.ScheduleEnabled = *req.ScheduleEnabled
@@ -390,21 +390,21 @@ func (hl *Handler) updateTestConfig(w http.ResponseWriter, r *http.Request, test
 		test.FailureThreshold = 3
 	}
 
+	if test.ScheduleEnabled && test.ScheduleCron == "" {
+		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "cron is required when schedule is enabled"})
+		return
+	}
+	// A paused schedule keeps its cron (same as /schedule/stop) so it can be resumed.
 	var nextRun *time.Time
-	if test.ScheduleEnabled {
-		if test.ScheduleCron == "" {
-			jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "cron is required when schedule is enabled"})
-			return
-		}
+	if test.ScheduleCron != "" {
 		next, err := schedule.NextRun(test.ScheduleCron, time.Now().UTC())
 		if err != nil {
 			jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "invalid cron expression"})
 			return
 		}
-		nextRun = &next
-	} else {
-		test.ScheduleCron = ""
-		nextRun = nil
+		if test.ScheduleEnabled {
+			nextRun = &next
+		}
 	}
 
 	cfg := repository.TestConfigUpdate{
